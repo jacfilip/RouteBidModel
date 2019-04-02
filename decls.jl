@@ -48,8 +48,8 @@ mutable struct Agent
     roadPosition::Real
     atNode::Intersection
     destNode::Intersection
-    bestRoute::Array{Int, 1}
-    alterRoute::Array{Int, 1}
+    bestRoute::Vector{Int}
+    alterRoute::Vector{Int}
     reducedGraph::SimpleWeightedDiGraph
     myBids::Vector{Tuple{Int, Real}}
     VoT::Real
@@ -70,6 +70,7 @@ mutable struct Agent
         a.VoT = 15.0;            #ToDo: Draw value
         a.carLength = 5.0;      #ToDo: Draw value
         a.vMax = 100.0;         #ToDo: Draw value
+        a.bestRoute = Vector{Int}();
         #ToDo: Calculate shortest path
         return  a;
     )::Agent
@@ -193,10 +194,25 @@ function SetWeights(a::Agent, n::Network)
     end
 end
 
-function SetShortestPath!(a::Agent)
-    if a.agent.atNode != nothing
-        dist = LightGraphs.dijkstra_shortest_paths(a.reducedGraph, a.destNode.nodeID).dists[a.atNode.nodeID]
+function SetShortestPath!(a::Agent)::Real
+    if a.atNode != nothing
+        s_star = LightGraphs.dijkstra_shortest_paths(a.reducedGraph, a.destNode.nodeID)
+        dist = s_star.dists[a.atNode.nodeID]
+        if dist != Inf
+            nextNode = a.atNode.nodeID
+            path = s_star.parents
+            empty!(a.bestRoute)
+            while nextNode != 0
+                nextNode = path[nextNode]
+                push!(a.bestRoute, nextNode)
+            end
+            push!(a.bestRoute, a.destNode.nodeID)
+            return dist
+        else
+            return Inf
+        end
     end
+    return nothing
 end
 
 function exp_k_f_model(k::Int, k_max::Int, v_max::Real)
