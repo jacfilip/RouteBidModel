@@ -193,6 +193,10 @@ function SetWeights(a::Agent, n::Network)
     end
 end
 
+function SolveShortestPath(a::Agent)
+    hjh
+end
+
 function exp_k_f_model(k::Int, k_max::Int, v_max::Real)
     return v_max * exp(- k / k_max)
 end
