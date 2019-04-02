@@ -193,8 +193,10 @@ function SetWeights(a::Agent, n::Network)
     end
 end
 
-function SolveShortestPath(a::Agent)
-    hjh
+function SetShortestPath!(a::Agent)
+    if a.agent.atNode != nothing
+        LightGraphs.dijkstra_shortest_paths(a.reducedGraph, a.destNode.nodeID).dists[a.atNode.nodeID]
+    end
 end
 
 function exp_k_f_model(k::Int, k_max::Int, v_max::Real)
