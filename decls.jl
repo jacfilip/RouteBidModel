@@ -204,9 +204,10 @@ function SetShortestPath!(a::Agent)::Real
             empty!(a.bestRoute)
             while nextNode != 0
                 nextNode = path[nextNode]
-                push!(a.bestRoute, nextNode)
+                if nextNode != 0
+                    push!(a.bestRoute, nextNode)
+                end
             end
-            push!(a.bestRoute, a.destNode.nodeID)
             return dist
         else
             return Inf
