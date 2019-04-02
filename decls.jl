@@ -6,21 +6,26 @@ using OpenStreetMapX
 agentCntr = 0
 agentIDmax = 0
 
+headway = 0.001
+avgCarLen = 0.003
+
 mutable struct Road
     length::Real
     agents::Vector{Int}
     bNode::Int
     fNode::Int
     vMax::Real
+    capacity::Int
 
     Road(in::Int, out::Int, len::Float64, vel::Float64) = (
-    s = new();
-    s.bNode = in;
-    s.fNode = out;
-    s.length = len;     #ToDo: calculate length from osm
-    s.vMax = vel;       #ToDo: retrieve from osm
-    s.agents = Vector{Int}();
-    return s;
+    r = new();
+    r.bNode = in;
+    r.fNode = out;
+    r.length = len;     #ToDo: calculate length from osm
+    r.vMax = vel;       #ToDo: retrieve from osm
+    r.agents = Vector{Int}();
+    r.capacity = floor(r.length / (avgCarLen + headway));
+    return r;
     )::Road
 end
 
@@ -53,6 +58,7 @@ mutable struct Agent
     reducedGraph::SimpleWeightedDiGraph
     myBids::Vector{Tuple{Int, Real}}
     VoT::Real
+    CoF::Real
     carLength::Real
     vMax::Real
 
@@ -68,8 +74,9 @@ mutable struct Agent
         a.roadPosition = 0.0;
         a.myBids = Vector{Tuple{Int,Real}}();
         a.VoT = 15.0;            #ToDo: Draw value
-        a.carLength = 5.0;      #ToDo: Draw value
-        a.vMax = 100.0;         #ToDo: Draw value
+        a.CoF = 0.15;      #Fuel cost $/km #ToDo: Check and draw value
+        a.carLength = 0.003;      #ToDo: Draw value
+        a.vMax = 1.5;         #ToDo: Draw value
         a.bestRoute = Vector{Int}();
         #ToDo: Calculate shortest path
         return  a;
@@ -128,7 +135,7 @@ function InitNetwork!(n::Network)
         for j in 1:n.graph.weights.n
             if n.graph.weights[i, j] != 0
                 r += 1
-                n.roads[r] = Road(i, j, n.graph.weights[i, j], 50.0)
+                n.roads[r] = Road(i, j, n.graph.weights[i, j], 0.8)
                 push!(n.intersections[i].outRoads, n.roads[r])
                 push!(n.intersections[j].inRoads, n.roads[r])
             end
@@ -136,7 +143,7 @@ function InitNetwork!(n::Network)
     end
 end
 
-function SetSpawnsAndDests(n::Network, spawns::Vector{Int}, dests::Vector{Int})
+function SetSpawnsAndDests!(n::Network, spawns::Vector{Int}, dests::Vector{Int})
     empty!(n.spawns)
     for i in spawns
         n.intersections[i].spawnPoint = true
@@ -189,8 +196,8 @@ end
 function SetWeights(a::Agent, n::Network)
     for r in n.roads
         agentCount = length(r.agents)
-        ttime = r.length / lin_k_f_model(agentCount, r.capcity, r.vMax)
-        a.reducedGraph.weights[r.bNode, r.fNode] = ttime * a.VoT
+        ttime = r.length / lin_k_f_model(agentCount * (avgCarLen + headway), r.length, r.vMax)
+        a.reducedGraph.weights[r.bNode, r.fNode] = ttime * a.VoT + r.length * a.CoF
     end
 end
 
@@ -216,11 +223,11 @@ function SetShortestPath!(a::Agent)::Real
     return nothing
 end
 
-function exp_k_f_model(k::Int, k_max::Int, v_max::Real)
+function exp_k_f_model(k::Real, k_max::Real, v_max::Real)
     return v_max * exp(- k / k_max)
 end
 
-function lin_k_f_model(k::Int, k_max::Int, v_max::Real)
+function lin_k_f_model(k::Real, k_max::Real, v_max::Real)
     return v_max * (1.0 - k / k_max)
 end
 
