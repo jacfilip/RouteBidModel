@@ -196,7 +196,6 @@ end
 function SetShortestPath!(a::Agent)
     if a.agent.atNode != nothing
         LightGraphs.dijkstra_shortest_paths(a.reducedGraph, a.destNode.nodeID).dists[a.atNode.nodeID]
-
     end
 end
 
