@@ -6,8 +6,8 @@ using OpenStreetMapX
 agentCntr = 0
 agentIDmax = 0
 
-headway = 0.001
-avgCarLen = 0.003
+headway = 1.0
+avgCarLen = 5.0
 
 mutable struct Road
     length::Real
@@ -16,15 +16,17 @@ mutable struct Road
     fNode::Int
     vMax::Real
     capacity::Int
+    lanes::Int
 
-    Road(in::Int, out::Int, len::Float64, vel::Float64) = (
+    Road(in::Int, out::Int, len::Float64, vel::Float64, lanes::Int = 1) = (
     r = new();
     r.bNode = in;
     r.fNode = out;
+    r.lanes = lanes;
     r.length = len;     #ToDo: calculate length from osm
     r.vMax = vel;       #ToDo: retrieve from osm
     r.agents = Vector{Int}();
-    r.capacity = floor(r.length / (avgCarLen + headway));
+    r.capacity = floor(r.length / (avgCarLen + headway)) * r.lanes;
     return r;
     )::Road
 end
@@ -49,9 +51,9 @@ end
 
 mutable struct Agent
     id::Int
-    road::Road
+    atRoad::Union{Road,Nothing}
     roadPosition::Real
-    atNode::Intersection
+    atNode::Union{Intersection,Nothing}
     destNode::Intersection
     bestRoute::Vector{Int}
     alterRoute::Vector{Int}
@@ -73,12 +75,12 @@ mutable struct Agent
         a.id = agentIDmax;
         a.roadPosition = 0.0;
         a.myBids = Vector{Tuple{Int,Real}}();
-        a.VoT = 15.0;            #ToDo: Draw value
-        a.CoF = 0.15;      #Fuel cost $/km #ToDo: Check and draw value
-        a.carLength = 0.003;      #ToDo: Draw value
-        a.vMax = 1.5;         #ToDo: Draw value
+        a.VoT = 15.0;            #Value of Time $/min ToDo: Draw value
+        a.CoF = 0.15e-3;        #Fuel cost $/m #ToDo: Check and draw value
+        a.carLength = 3.0;      #m ToDo: Draw value
+        a.vMax = 1500.0;         #m/min ToDo: Draw value
         a.bestRoute = Vector{Int}();
-        #ToDo: Calculate shortest path
+        a.atRoad = nothing;
         return  a;
     )::Agent
 
@@ -114,6 +116,10 @@ mutable struct Simulation
     isRunning::Bool
 end
 
+function GetTimeStep(sim::Simulation)::Real
+    return sim.timeStep
+end
+
 function InitNetwork!(n::Network)
     n.intersections = Vector{Intersection}(undef,n.graph.weights.m)
     for i in 1:n.graph.weights.m
@@ -135,7 +141,7 @@ function InitNetwork!(n::Network)
         for j in 1:n.graph.weights.n
             if n.graph.weights[i, j] != 0
                 r += 1
-                n.roads[r] = Road(i, j, n.graph.weights[i, j], 0.8)
+                n.roads[r] = Road(i, j, n.graph.weights[i, j], 800.0)
                 push!(n.intersections[i].outRoads, n.roads[r])
                 push!(n.intersections[j].inRoads, n.roads[r])
             end
@@ -171,7 +177,7 @@ end
 
 function GetIntersectByNode(n::Network, id::Int)::Intersection
     for i in n.intersections
-        if i.id == id
+        if i.nodeID == id
             return i
         end
     end
@@ -187,16 +193,36 @@ function GetAgentByID(n::Network, id::Int)::Agent
     return nothing
 end
 
+function StackAgentOnRoad(a::Agent, r::Road)::Bool
+    if length(r.agents) < r.capacity
+        push!(r.agents, a.id)
+        return true
+    else
+        return false
+    end
+end
+
+function GetVelocity(r::Road)
+    return max(lin_k_f_model(length(r.agents) * (avgCarLen + headway), r.length, r.vMax), r.vMax)
+end
+
 function SpawnAgentAtRandom(n::Network)
-    s = rand(n.spawns)
-    d = rand(n.dests)
-    push!(n.agents, Agent(n.intersections[s],n.intersections[d],n.graph))
+    push!(n.agents, Agent(n.intersections[rand(n.spawns)],n.intersections[rand(n.dests)],n.graph))
+end
+
+function RemoveFromRoad!(r::Road, a::Agent, n::Network)
+    a.atRoad = nothing
+    deleteat!(n.agents, findall(b -> b == a.id, r.agents))
+end
+
+function DestroyAgent(a::Agent, n::Network)
+    deleteat!(n.agents, findall(b -> b.id == a.id, n.agents))
+    global agentCntr -= 1
 end
 
 function SetWeights(a::Agent, n::Network)
     for r in n.roads
-        agentCount = length(r.agents)
-        ttime = r.length / lin_k_f_model(agentCount * (avgCarLen + headway), r.length, r.vMax)
+        ttime = r.length / r.GetAvgVelocity
         a.reducedGraph.weights[r.bNode, r.fNode] = ttime * a.VoT + r.length * a.CoF
     end
 end
@@ -221,6 +247,39 @@ function SetShortestPath!(a::Agent)::Real
         end
     end
     return nothing
+end
+
+function ReachedIntersection(a::Agent, n::Network)
+    if a.atNode == a.destNode
+        DestroyAgent(a, n)
+    else
+        if SetShortestPath!(a) == Inf
+            return
+        else                    #turn into a new road section
+            #ToDo: Calculate alterRoute too
+            nextRoad = GetRoadByNodes(n, a.atNode.nodeID, a.bestRoute[1])
+            if (StackAgentOnRoad(a, nextRoad))
+                a.atRoad = nextRoad
+                a.roadPosition = 0.0
+                a.atNode = nothing
+            end
+        end
+    end
+end
+
+function MakeAction!(a::Agent, sim::Simulation)
+    if a.atRoad != nothing
+        a.roadPosition += GetVelocity(a.atRoad) * GetTimeStep(sim) / 60.0
+        a.roadPosition = min(a.roadPosition, a.atRoad.length)
+        if a.roadPosition == a.atRoad.length
+            a.atNode = GetIntersectByNode(sim.network, a.atRoad.fNode)
+            RemoveFromRoad!(a.atRoad, a, sim.network)
+        end
+    end
+
+    if a.atNode != nothing
+        ReachedIntersection(a, sim.network)
+    end
 end
 
 function exp_k_f_model(k::Real, k_max::Real, v_max::Real)
