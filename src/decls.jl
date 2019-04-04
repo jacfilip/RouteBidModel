@@ -3,6 +3,7 @@ module Obj
 using LightGraphs, SimpleWeightedGraphs
 using OpenStreetMapX
 
+
 agentCntr = 0
 agentIDmax = 0
 
@@ -195,9 +196,8 @@ function GetAgentByID(n::Network, id::Int)::Union{Agent,Nothing}
     return nothing
 end
 
-function StackAgentOnRoad(a::Agent, r::Road)::Bool
+function CanFitAtRoad(a::Agent, r::Road)::Bool
     if length(r.agents) < r.capacity
-        push!(r.agents, a.id)
         return true
     else
         return false
@@ -212,15 +212,14 @@ function SpawnAgentAtRandom(n::Network)
     push!(n.agents, Agent(n.intersections[rand(n.spawns)],n.intersections[rand(n.dests)],n.graph))
 end
 
-function RemoveFromRoad!(r::Road, a::Agent, n::Network)
+function RemoveFromRoad!(r::Road, a::Agent)
     a.atRoad = nothing
-    deleteat!(n.agents, findall(b -> b == a.id, r.agents))
+    deleteat!(r.agents, findall(b -> b == a.id, r.agents))
 end
 
 function DestroyAgent(a::Agent, n::Network)
     deleteat!(n.agents, findall(b -> b.id == a.id, n.agents))
     global agentCntr -= 1
-    println("Agent $(a) destroyed!")
 end
 
 function SetWeights!(a::Agent, n::Network)
@@ -254,6 +253,7 @@ end
 
 function ReachedIntersection(a::Agent, n::Network)
     if a.atNode == a.destNode
+        println("Agent $(a.id) destroyed.")
         DestroyAgent(a, n)
     else
         #ToDo: add SetWeights here
@@ -262,7 +262,8 @@ function ReachedIntersection(a::Agent, n::Network)
         else                    #turn into a new road section
             #ToDo: Calculate alterRoute too
             nextRoad = GetRoadByNodes(n, a.atNode.nodeID, a.bestRoute[1])
-            if (StackAgentOnRoad(a, nextRoad))
+            if (CanFitAtRoad(a, nextRoad))
+                push!(nextRoad.agents, a.id)
                 a.atRoad = nextRoad
                 a.roadPosition = 0.0
                 a.atNode = nothing
@@ -277,7 +278,7 @@ function MakeAction!(a::Agent, sim::Simulation)
         a.roadPosition = min(a.roadPosition, a.atRoad.length)
         if a.roadPosition == a.atRoad.length
             a.atNode = GetIntersectByNode(sim.network, a.atRoad.fNode)
-            RemoveFromRoad!(a.atRoad, a, sim.network)
+            RemoveFromRoad!(a.atRoad, a)
         end
     end
 
