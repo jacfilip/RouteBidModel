@@ -25,4 +25,3 @@ Decls.SetSpawnsAndDests!(nw, [3], [5])
 for i in 1:10
     Decls.SpawnAgentAtRandom(nw)
 end
-sim = Decls.Simulation(nw, 60, 1, 0, true)
