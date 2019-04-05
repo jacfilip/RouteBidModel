@@ -9,6 +9,6 @@ using OpenStreetMapX
 using LightGraphs, SimpleWeightedGraphs
 using RouteBidModel
 
-#include("../src/decls.jl")
+include("../src/decls.jl")
 
 @test true
