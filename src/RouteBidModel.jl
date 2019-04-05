@@ -2,7 +2,7 @@ module RouteBidModel
 
 using Test
 using OpenStreetMapX
-using LightGraphs
+using LightGraphs, SimpleWeightedGraphs
 
 include("./decls.jl")
 #include("./run.jl")
