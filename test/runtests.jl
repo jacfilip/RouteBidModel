@@ -11,4 +11,4 @@ using RouteBidModel
 
 #include("../src/decls.jl")
 
-@test false
+@test true
