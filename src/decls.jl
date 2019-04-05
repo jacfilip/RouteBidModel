@@ -4,6 +4,14 @@ using LightGraphs, SimpleWeightedGraphs
 using OpenStreetMapX
 
 
+export Network
+export Simulation
+export Agent
+export Road
+export Intersection
+export InitNetwork!
+export MakeAction!
+
 agentCntr = 0
 agentIDmax = 0
 
@@ -107,19 +115,29 @@ mutable struct Network
     Network() = new();
 end
 
-
 mutable struct Simulation
     network::Network
     timeMax::Real
     timeStep::Real
+    timeToNext::Vector{Tuple{Int,Real}}
 
     timeElapsed::Real
     isRunning::Bool
+    Simulation(n::Network, tmax::Real, dt::Real, run::Bool = true) = (
+        s = Simulation();
+        s.network = n;
+        s.timeMax = tmax;
+        s.timeStep = dt;
+        s.timeToNext = Vector{Tuple{Int,Real}}();
+        s.timeElapsed = 0;
+        s.isRunning = run;
+    return s;)::Simulation
+    Simulation() = new();
 end
 
 function GetTimeStep(sim::Simulation)::Real
     dt = Vector{Real}()
-    for r in sim.nw.roads
+    for r in sim.network.roads
 
     end
 
