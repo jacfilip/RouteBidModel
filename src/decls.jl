@@ -1,4 +1,4 @@
-module Obj
+module Decls
 
 using LightGraphs, SimpleWeightedGraphs
 using OpenStreetMapX
@@ -118,6 +118,11 @@ mutable struct Simulation
 end
 
 function GetTimeStep(sim::Simulation)::Real
+    dt = Vector{Real}()
+    for r in sim.nw.roads
+
+    end
+
     return sim.timeStep
 end
 
@@ -295,4 +300,4 @@ function lin_k_f_model(k::Real, k_max::Real, v_max::Real)
     return v_max * (1.0 - k / k_max)
 end
 
-end  # module  Obj
+end  # module  Decls
