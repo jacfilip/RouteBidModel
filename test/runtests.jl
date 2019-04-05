@@ -27,4 +27,4 @@ for i in 1:10
 end
 sim = Decls.Simulation(nw, 60, 1, 0, true)
 
-@test length(nw.agents) == 10
+@test length(nw.agents) < 10
