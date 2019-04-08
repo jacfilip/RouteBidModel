@@ -2,7 +2,8 @@ module Decls
 
 using LightGraphs, SimpleWeightedGraphs
 using OpenStreetMapX
-
+using Compose
+using DataFrames
 
 export Network
 export Simulation
@@ -17,6 +18,8 @@ agentIDmax = 0
 
 headway = 1.0
 avgCarLen = 5.0
+
+ntwrkContext = context()
 
 mutable struct Road
     length::Real
@@ -42,14 +45,18 @@ end
 
 mutable struct Intersection
     nodeID::Int
+    lat::Float64
+    lon::Float64
     inRoads::Vector{Road}
     outRoads::Vector{Road}
     spawnPoint::Bool
     destPoint::Bool
 
-    Intersection(id::Int, spawnPoint = false, destPoint = false) =(
+    Intersection(id::Int, lat = 0.0, lon = 0.0, spawnPoint = false, destPoint = false) =(
         inter = new();
         inter.nodeID = id;
+        inter.lat = lat;
+        inter.lon = lon;
         inter.spawnPoint = spawnPoint;
         inter.destPoint = destPoint;
         inter.inRoads = Vector{Road}();
@@ -105,13 +112,14 @@ mutable struct Network
     agents::Vector{Agent}
     graph::SimpleWeightedDiGraph
     Network(g::SimpleWeightedDiGraph) = (
-            x = new();
-            x.graph = deepcopy(g);
-            x.numRoads = 0;
-            x.spawns = Vector{Intersection}();
-            x.dests = Vector{Intersection}();
-            x.agents = Vector{Agent}();
-            return x)::Network
+            n = new();
+            n.graph = deepcopy(g);
+            n.numRoads = 0;
+            n.spawns = Vector{Intersection}();
+            n.dests = Vector{Intersection}();
+            n.agents = Vector{Agent}();
+            InitNetwork!(n);
+            return n)::Network
     Network() = new();
 end
 
@@ -120,26 +128,30 @@ mutable struct Simulation
     timeMax::Real
     timeStep::Real
     timeToNext::Vector{Tuple{Int,Real}}
+    iter::Int
+    simData::DataFrame
 
     timeElapsed::Real
     isRunning::Bool
     Simulation(n::Network, tmax::Real, dt::Real, run::Bool = true) = (
         s = Simulation();
         s.network = n;
+        s.iter = 0;
         s.timeMax = tmax;
         s.timeStep = dt;
         s.timeToNext = Vector{Tuple{Int,Real}}();
         s.timeElapsed = 0;
         s.isRunning = run;
+        s.simData = DataFrame(iter = Int[], t = Real[], agent = Int[], node1 = Int[], node2 = Int[], roadPos = Real[]);
     return s;)::Simulation
     Simulation() = new();
 end
 
 function GetTimeStep(sim::Simulation)::Real
     dt = Vector{Real}()
-    for r in sim.network.roads
-
-    end
+    # for r in sim.network.roads
+    #
+    # end
 
     return sim.timeStep
 end
@@ -172,6 +184,22 @@ function InitNetwork!(n::Network)
                 push!(n.intersections[j].inRoads, n.roads[r])
             end
         end
+    end
+end
+
+function SetLL(n::Network, lat::Vector{Float64}, lon::Vector{Float64})
+    if length(lat) != length(lon)
+        throw(ErrorException("Latitude and longitude vectors are of different length."))
+    end
+
+    if length(lon) != length(n.intersections)
+        throw(ErrorException("Coords vectors must contain the same number of elements as the number of nodes."))
+    end
+
+    #[((i -> (i.lat, i.lon)).(n.intersections))[k] = (lat[k], lon[k]) for k in length(lat)]
+    for i in 1:length(lat)
+        n.intersections[i].lat = lat[i]
+        n.intersections[i].lon = lon[i]
     end
 end
 
@@ -219,6 +247,29 @@ function GetAgentByID(n::Network, id::Int)::Union{Agent,Nothing}
     return nothing
 end
 
+function SketchNetwork(n::Network)::Context
+    tups = (i -> (i.lon, i.lat)).(n.intersections)
+    min = minimum((t -> t[1]).(tups)), minimum((t -> t[2]).(tups))
+    max = maximum((t -> t[1]).(tups)), maximum((t -> t[2]).(tups))
+
+    pts = [((tups[r.bNode][1], tups[r.bNode][2]), (tups[r.fNode][1], tups[r.fNode][2])) for r in n.roads]
+
+    global ntwrkContext = compose(context(units = UnitBox(min[1],min[2], max[1], max[2])), line(pts), linewidth(1mm), stroke("white"))
+end
+
+function SketchAgents(c::Context, n::Network)
+
+    pts = Vector{Tuple{Float64, Float64}}()
+    for a in n.agents
+        (bx, by) = (n.intersections[a.atRoad.bNode].lon, n.intersections[a.atRoad.bNode].lat)
+        (fx, fy) = (n.intersections[a.atRoad.fNode].lon, n.intersections[a.atRoad.fNode].lat)
+        progress = a.roadPosition / a.atRoad.length
+        push!(pts, (bx + progress * (fx - bx), by + progress * (fy - by)))
+    end
+    compose(c, circle(pts[1][1], pts[1][2], 10), fill("red"))
+    return  pts
+end
+
 function CanFitAtRoad(a::Agent, r::Road)::Bool
     if length(r.agents) < r.capacity
         return true
@@ -228,7 +279,7 @@ function CanFitAtRoad(a::Agent, r::Road)::Bool
 end
 
 function GetVelocity(r::Road)
-    return max(lin_k_f_model(length(r.agents) * (avgCarLen + headway), r.length, r.vMax), r.vMax)
+    return min(lin_k_f_model(length(r.agents) * (avgCarLen + headway), r.length, r.vMax), r.vMax)
 end
 
 function SpawnAgentAtRandom(n::Network)
@@ -274,6 +325,20 @@ function SetShortestPath!(a::Agent)::Real
     return nothing
 end
 
+function GetAgentLocation(a::Agent, n::Network)::Union{Tuple{Int,Int,Real}, Nothing}
+    if findfirst(x -> x.id == a.id, n.agents) == nothing
+        return nothing
+    else
+        if(a.atNode != nothing)
+            return a.atNode.nodeID, a.atNode.nodeID, 0.
+        elseif a.atRoad != nothing
+            return a.atRoad.bNode, a.atRoad.fNode, a.roadPosition
+        else
+            throw(Exception("Unknown position of agent $(a.id)"))
+        end
+    end
+end
+
 function ReachedIntersection(a::Agent, n::Network)
     if a.atNode == a.destNode
         println("Agent $(a.id) destroyed.")
@@ -308,6 +373,44 @@ function MakeAction!(a::Agent, sim::Simulation)
     if a.atNode != nothing
         ReachedIntersection(a, sim.network)
     end
+    DumpInfo(a, sim)
+end
+
+function DumpInfo(a::Agent, s::Simulation)
+    loc = GetAgentLocation(a, s.network)
+    push!(s.simData, Dict(  :iter => s.iter,
+                            :t => s.timeElapsed,
+                            :agent => a.id,
+                            :node1 => loc[1],
+                            :node2 => loc[2],
+                            :roadPos => loc[3]
+                            ))
+    println("t $(s.timeElapsed): $(GetAgentLocation(a, s.network))")
+end
+
+function RunSim(s::Simulation)::Bool
+    if !s.isRunning
+        return false
+    end
+
+    dt = GetTimeStep(s)
+    if dt == 0
+        println("Warning, simulation step is equal to zero.")
+    elseif dt == Inf
+        throw(ErrorException("Error, simulation step is equal to infinity!"))
+    elseif dt < 0
+        throw(ErrorException("Error, simulation step is negative!"))
+    end
+
+    while s.timeElapsed < s.timeMax
+        s.iter += 1
+        for a in s.network.agents
+            MakeAction!(a, s)
+        end
+        s.timeElapsed += dt
+    end
+
+    return true
 end
 
 function exp_k_f_model(k::Real, k_max::Real, v_max::Real)
