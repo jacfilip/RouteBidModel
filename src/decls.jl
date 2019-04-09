@@ -10,8 +10,11 @@ export Simulation
 export Agent
 export Road
 export Intersection
-export InitNetwork!
+export SetLL
 export MakeAction!
+export RunSim
+export SetSpawnsAndDests!
+export SpawnAgentAtRandom
 
 agentCntr = 0
 agentIDmax = 0
@@ -142,7 +145,7 @@ mutable struct Simulation
         s.timeToNext = Vector{Tuple{Int,Real}}();
         s.timeElapsed = 0;
         s.isRunning = run;
-        s.simData = DataFrame(iter = Int[], t = Real[], agent = Int[], node1 = Int[], node2 = Int[], roadPos = Real[]);
+        s.simData = DataFrame(iter = Int[], t = Real[], agent = Int[], node1 = Int[], node2 = Int[], roadPos = Real[], lat = Real[], lon = Real[]);
     return s;)::Simulation
     Simulation() = new();
 end
@@ -247,27 +250,10 @@ function GetAgentByID(n::Network, id::Int)::Union{Agent,Nothing}
     return nothing
 end
 
-function SketchNetwork(n::Network)::Context
+function GetIntersectionCoords(n::Network)::Vector{Tuple{Tuple{Real,Real},Tuple{Real,Real}}}
     tups = (i -> (i.lon, i.lat)).(n.intersections)
-    min = minimum((t -> t[1]).(tups)), minimum((t -> t[2]).(tups))
-    max = maximum((t -> t[1]).(tups)), maximum((t -> t[2]).(tups))
 
-    pts = [((tups[r.bNode][1], tups[r.bNode][2]), (tups[r.fNode][1], tups[r.fNode][2])) for r in n.roads]
-
-    global ntwrkContext = compose(context(units = UnitBox(min[1],min[2], max[1], max[2])), line(pts), linewidth(1mm), stroke("white"))
-end
-
-function SketchAgents(c::Context, n::Network)
-
-    pts = Vector{Tuple{Float64, Float64}}()
-    for a in n.agents
-        (bx, by) = (n.intersections[a.atRoad.bNode].lon, n.intersections[a.atRoad.bNode].lat)
-        (fx, fy) = (n.intersections[a.atRoad.fNode].lon, n.intersections[a.atRoad.fNode].lat)
-        progress = a.roadPosition / a.atRoad.length
-        push!(pts, (bx + progress * (fx - bx), by + progress * (fy - by)))
-    end
-    compose(c, circle(pts[1][1], pts[1][2], 10), fill("red"))
-    return  pts
+    return pts = [((tups[r.bNode][1], tups[r.bNode][2]), (tups[r.fNode][1], tups[r.fNode][2])) for r in n.roads]
 end
 
 function CanFitAtRoad(a::Agent, r::Road)::Bool
@@ -377,14 +363,25 @@ function MakeAction!(a::Agent, sim::Simulation)
 end
 
 function DumpInfo(a::Agent, s::Simulation)
-    loc = GetAgentLocation(a, s.network)
-    push!(s.simData, Dict(  :iter => s.iter,
-                            :t => s.timeElapsed,
-                            :agent => a.id,
-                            :node1 => loc[1],
-                            :node2 => loc[2],
-                            :roadPos => loc[3]
-                            ))
+    if (loc = GetAgentLocation(a, s.network)) == nothing
+        return
+    else
+        loc = GetAgentLocation(a, s.network)
+        (bx, by) = (s.network.intersections[loc[1]].lon, s.network.intersections[loc[1]].lat)
+        (fx, fy) = (s.network.intersections[loc[2]].lon, s.network.intersections[loc[2]].lat)
+        progress =  a.atRoad == nothing ? 0 : loc[3] / a.atRoad.length
+        (x, y) = (bx + progress * (fx - bx), by + progress * (fy - by))
+
+        push!(s.simData, Dict(  :iter => s.iter,
+                                :t => s.timeElapsed,
+                                :agent => a.id,
+                                :node1 => loc[1],
+                                :node2 => loc[2],
+                                :roadPos => loc[3],
+                                :lat => y,
+                                :lon => x
+                                ))
+    end
     println("t $(s.timeElapsed): $(GetAgentLocation(a, s.network))")
 end
 
