@@ -22,8 +22,6 @@ agentIDmax = 0
 headway = 1.0
 avgCarLen = 5.0
 
-ntwrkContext = context()
-
 mutable struct Road
     length::Real
     agents::Vector{Int}

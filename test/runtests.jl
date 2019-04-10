@@ -3,6 +3,8 @@ using Pkg
 Pkg.add("LightGraphs")
 Pkg.add("SimpleWeightedGraphs")
 Pkg.add("OpenStreetMapX")
+Pkg.add("DataFrames")
+Pkg.add("DataFramesMeta")
 
 using Test
 using OpenStreetMapX
