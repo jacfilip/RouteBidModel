@@ -15,7 +15,6 @@ using LightGraphs, SimpleWeightedGraphs
 using DataFrames, DataFramesMeta
 using Compose
 using Distributions
-using Plots
 using CSV
 using DelimitedFiles
 

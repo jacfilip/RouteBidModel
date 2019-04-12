@@ -143,6 +143,7 @@ mutable struct Simulation
     network::Network
     timeMax::Real
     timeStep::Real
+    timeStepVar::Vector{Real}
     timeToNext::Vector{Tuple{Int,Real}}
     iter::Int
 
@@ -161,6 +162,7 @@ mutable struct Simulation
         s.iter = 0;
         s.timeMax = tmax;
         s.timeStep = dt;
+        s.timeStepVar = Vector{Real}();
         s.timeToNext = Vector{Tuple{Int,Real}}();
         s.timeElapsed = 0;
         s.maxAgents = maxAgents;
@@ -177,24 +179,26 @@ function GetTimeStep(s::Simulation)::Real
         return s.timeStep
     end
 
-    t_min = Inf
-     for r in s.network.roads
-         if !isempty(r.agents)
-            if (t = (r.length - GetAgentByID(s.network, r.agents[1]).roadPosition) / GetVelocityMpS(r)) < t_min
-                t_min = t
-            end
+    if length(s.timeStepVar) < s.iter
+        t_min = Inf
+         for r in s.network.roads
+             if !isempty(r.agents)
+                if (t = (r.length - GetAgentByID(s.network, r.agents[1]).roadPosition) / GetVelocityMpS(r)) < t_min
+                    t_min = t
+                end
+             end
          end
-     end
 
-    t_min = minimum([t_min, s.nextSpawn - s.timeElapsed])
+        t_min = minimum([t_min, s.nextSpawn - s.timeElapsed])
 
-    if t_min == 0
-        AddRegistry("Warning, simulation step is equal to zero.", true)
-    elseif t_min < 0
-        throw(ErrorException("Error, simulation step is negative!"))
+        if t_min == 0
+            AddRegistry("Warning, simulation step is equal to zero.", true)
+        elseif t_min < 0
+            throw(ErrorException("Error, simulation step is negative!"))
+        end
+        push!(s.timeStepVar, t_min + 0.001)
     end
-
-    return t_min + 0.001
+    return s.timeStepVar[s.iter]
 end
 
 function InitNetwork!(n::Network)
@@ -358,17 +362,13 @@ function SetShortestPath!(a::Agent)::Real
 end
 
 function GetAgentLocation(a::Agent, n::Network)::Union{Tuple{Int,Int,Real}, Nothing}
-    # if findfirst(x -> x.id == a.id, n.agents) == nothing
-    #     return nothing
-    # else
-        if(a.atNode != nothing)
-            return a.atNode.nodeID, a.atNode.nodeID, 0.
-        elseif a.atRoad != nothing
-            return a.atRoad.bNode, a.atRoad.fNode, a.roadPosition
-        else
-            throw(Exception("Unknown position of agent $(a.id)"))
-        end
-    # end
+    if(a.atNode != nothing)
+        return a.atNode.nodeID, a.atNode.nodeID, 0.
+    elseif a.atRoad != nothing
+        return a.atRoad.bNode, a.atRoad.fNode, a.roadPosition
+    else
+        throw(Exception("Unknown position of agent $(a.id)"))
+    end
 end
 
 function ReachedIntersection(a::Agent, n::Network)
@@ -394,11 +394,11 @@ function ReachedIntersection(a::Agent, n::Network)
 end
 
 function MakeAction!(a::Agent, sim::Simulation)
+    dt = GetTimeStep(sim)
     if a.atRoad != nothing
-        AddRegistry("Agent $(a.id) is travelling from $(GetAgentLocation(a, sim.network)[1]) to $(GetAgentLocation(a, sim.network)[2]), $(GetAgentLocation(a, sim.network)[3]) m ahead at speed: $(GetVelocityMpS(a.atRoad)*3.6) km/h", false)
-
-        a.roadPosition += GetVelocityMpS(a.atRoad) * GetTimeStep(sim)
+        a.roadPosition += GetVelocityMpS(a.atRoad) * dt
         a.roadPosition = min(a.roadPosition, a.atRoad.length)
+        AddRegistry("Agent $(a.id) has travelled $(GetAgentLocation(a, sim.network)[3]) of $(a.atRoad.length) m from $(GetAgentLocation(a, sim.network)[1]) to $(GetAgentLocation(a, sim.network)[2]) at speed: $(GetVelocityMpS(a.atRoad)*3.6) km/h", false)
         if a.roadPosition == a.atRoad.length
             a.atNode = GetIntersectByNode(sim.network, a.atRoad.fNode)
             RemoveFromRoad!(a.atRoad, a)
@@ -440,7 +440,6 @@ function RunSim(s::Simulation)::Bool
 
     while s.timeElapsed < s.timeMax
         s.iter += 1
-        s.timeElapsed += GetTimeStep(s)
 
         AddRegistry("Iter #$(s.iter), time: $(s.timeElapsed), no. of agents: $(agentCntr), agents in total: $agentIDmax", true)
         if s.timeElapsed >= s.nextSpawn
@@ -454,6 +453,8 @@ function RunSim(s::Simulation)::Bool
         end
 
         if s.iter > s.maxIter return false end
+
+        s.timeElapsed += GetTimeStep(s)
     end
     return true
 end
