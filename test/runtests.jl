@@ -5,12 +5,18 @@ Pkg.add("SimpleWeightedGraphs")
 Pkg.add("OpenStreetMapX")
 Pkg.add("DataFrames")
 Pkg.add("DataFramesMeta")
+Pkg.add("Distributions")
+Pkg.add("CSV")
 
 using Test
 using OpenStreetMapX
 using LightGraphs, SimpleWeightedGraphs
 using DataFrames, DataFramesMeta
 using Compose
+using Distributions
+using Plots
+using CSV
+using DelimitedFiles
 
 include("../src/decls.jl")
 include("../src/Visuals.jl")
@@ -29,21 +35,13 @@ add_edge!(g, 5, 4, 330.0)
 
 nw = Decls.Network(g)
 Decls.SetLL(nw, [100., 600., 100., 600., 700.], [100., 100., 600., 600., 400.])
-Decls.SetSpawnsAndDests!(nw, [3], [5])
-for i in 1:2
-    Decls.SpawnAgentAtRandom(nw)
-end
+Decls.SetSpawnAndDestPts!(nw, [1, 3], [5])
+sim = Decls.Simulation(nw, 60.0, maxIter = 200)
 
-sim = Decls.Simulation(nw, 60, 1)
 Decls.RunSim(sim)
-
-Visuals.test2(comp)
+CSV.write("output.csv", sim.simData)
+writedlm("log.txt", Decls.simLog, "\n")
 
 v = @linq sim.simData |> where(:agent .==  1) |> select(:lat, :lon)
 
-comp = Visuals.DrawGraph(Decls.GetIntersectionCoords(nw))
-comp2 = Visuals.MarkPositions(v[:,1], v[:,2])
-
-compose(comp, comp2)
-
-ncoords = Decls.GetIntersectionCoords(nw)
+compose(Visuals.DrawGraph(Decls.GetIntersectionCoords(nw)), Visuals.MarkPositions(v[:,1], v[:,2]))
