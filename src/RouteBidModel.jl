@@ -1,5 +1,7 @@
 module RouteBidModel
 
+using Pkg
+
 Pkg.add("OpenStreetMapX")
 Pkg.add("LightGraphs")
 Pkg.add("SimpleWeightedGraphs")
