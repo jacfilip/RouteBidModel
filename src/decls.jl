@@ -127,16 +127,19 @@ mutable struct Network
     numRoads::Int
     agents::Vector{Agent}
     graph::SimpleWeightedDiGraph
-    Network(g::SimpleWeightedDiGraph) = (
+    Network(g::SimpleWeightedDiGraph, coords::Vector{Tuple{Real,Real,Real}}) = (
             n = new();
             n.graph = deepcopy(g);
             n.numRoads = 0;
             n.spawns = Vector{Intersection}();
             n.dests = Vector{Intersection}();
             n.agents = Vector{Agent}();
-            InitNetwork!(n);
+            InitNetwork!(n, coords);
             return n)::Network
+    Network(g::SimpleWeightedDiGraph, coords::Vector{ENU}) = (
+        return Network(g,[(i.east, i.north, i.up) for i in coords]))::Network
     Network() = new();
+    Network(map::MapData) = (return  ConvertToNetwork(map))::Network
 end
 
 mutable struct Simulation
@@ -201,12 +204,12 @@ function GetTimeStep(s::Simulation)::Real
     return s.timeStepVar[s.iter]
 end
 
-function InitNetwork!(n::Network)
+function InitNetwork!(n::Network, coords::Vector{Tuple{Real,Real,Real}})
     global agentIDmax = 0
     global agentCntr = 0
     n.intersections = Vector{Intersection}(undef,n.graph.weights.m)
     for i in 1:n.graph.weights.m
-        n.intersections[i] = Intersection(i)
+        n.intersections[i] = Intersection(i, coords[1], coords[2])
     end
 
     for i in 1:n.graph.weights.m
@@ -231,6 +234,16 @@ function InitNetwork!(n::Network)
         end
     end
     AddRegistry("Network has been successfully initialized.")
+end
+
+function ConvertToNetwork(m::MapData)::Network
+    g =  SimpleWeightedDiGraph()
+    add_vertices!(g, length(m.nodes))
+    for edge in m.e
+        add_edge!(g, m.v[edge[1]], m.v[edge[2]], DistanceENU(m.nodes[edge[1]], m.nodes[edge[2]]))
+    end
+
+    return Network(g, [m.nodes[i] for i in keys(m.nodes)])
 end
 
 function SetLL(n::Network, lat::Vector{Float64}, lon::Vector{Float64})
@@ -300,9 +313,17 @@ function GetAgentByID(n::Network, id::Int)::Union{Agent,Nothing}
 end
 
 function GetIntersectionCoords(n::Network)::Vector{Tuple{Tuple{Real,Real},Tuple{Real,Real}}}
-    tups = (i -> (i.lon, i.lat)).(n.intersections)
+    tups = (i -> (i.lat, i.lon)).(n.intersections)
 
     return pts = [((tups[r.bNode][1], tups[r.bNode][2]), (tups[r.fNode][1], tups[r.fNode][2])) for r in n.roads]
+end
+
+function GetIntersectionCoords2(n::Network)::DataFrame
+    df = DataFrame(first_lat = Real[], second_lat = Real[], first_lon = Real[],  second_lon = Real[])
+    for p in GetIntersectionCoords(n)
+        push!(df, Dict( :first_lat => p[1][1], :second_lat => p[2][1], :first_lon => p[1][2], :second_lon => p[2][2]))
+    end
+    return df
 end
 
 function CanFitAtRoad(a::Agent, r::Road)::Bool
@@ -465,6 +486,10 @@ end
 
 function lin_k_f_model(k::Real, k_max::Real, v_max::Real)
     return v_max * (1.0 - k / (k_max + 1))
+end
+
+function DistanceENU(p1::ENU, p2::ENU)
+    return sqrt((p1.east - p2.east)^2 + (p1.north - p2.north)^2 + (p1.up - p2.up)^2)
 end
 
 end  # module  Decls
