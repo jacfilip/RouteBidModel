@@ -14,7 +14,10 @@ Pkg.add("Compose")
 using Test
 using OpenStreetMapX
 using LightGraphs, SimpleWeightedGraphs
-
+using DataFrames, DataFramesMeta
+using Distributions
+using CSV
+using Compose
 
 include("./decls.jl")
 
