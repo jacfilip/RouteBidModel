@@ -38,9 +38,11 @@ Decls.SetLL(nw, [100., 600., 100., 600., 700.], [100., 100., 600., 600., 400.])
 Decls.SetSpawnAndDestPts!(nw, [1, 3], [5])
 sim = Decls.Simulation(nw, 60.0, maxIter = 200)
 
-Decls.RunSim(sim)
-CSV.write("output.csv", sim.simData)
-writedlm("log.txt", Decls.simLog, "\n")
+@time Decls.RunSim(sim)
+
+CSV.write(raw".\results\history.csv", sim.simData)
+CSV.write(raw".\results\coords.csv", Decls.GetIntersectionCoords2(sim.network))
+writedlm(raw".\results\log.txt", Decls.simLog, "\n")
 
 v = @linq sim.simData |> where(:agent .==  1) |> select(:lat, :lon)
 
