@@ -1,5 +1,3 @@
-module graph
-
 include("./decls.jl")
 
 using OpenStreetMapX
@@ -9,25 +7,18 @@ using GraphPlot
 using Plots
 using Compose, Colors
 
-
-#cd(raw"C:\Users\jacek.filipowski\github")
 path = raw"C:\Users\jacek.filipowski\github\route-bid-model\maps"
 mapName = "buffaloF.osm"
 
-map = OpenStreetMapX.parseOSM(raw"C:\Users\jacek.filipowski\github\route-bid-model\maps\buffaloF.osm")
-crop!(map)
-
-mData = get_map_data(path, mapName, only_intersections = true)
-mapPlot = OpenStreetMapXPlot.plotmap(mData,width=1000,height=800)
-
-nw = Decls.Network(mData)
-
-function ConvToNetwork(map::MapData)::Decls.Network
-    g =  SimpleWeightedDiGraph()
-    add_vertices!(g, length(map.nodes))
-
-    n = Decls.Network(g)
-    return n
+function CreateNetworkFromFile(filePath::String)::Decls.Network
+    map = OpenStreetMapX.parseOSM(filePath)
+    crop!(map)
+    mData = get_map_data(path, mapName, only_intersections = true)
+    nw = Decls.Network(mData)
+    mapPlot = OpenStreetMapXPlot.plotmap(mData,width=1000,height=800)
+    return nw
 end
 
-end  # module
+map = OpenStreetMapX.parseOSM(raw"C:\Users\jacek.filipowski\github\route-bid-model\maps\buffaloF.osm")
+crop!(map)
+mData = get_map_data(path, mapName, only_intersections = true)

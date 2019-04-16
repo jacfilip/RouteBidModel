@@ -20,23 +20,12 @@ using DelimitedFiles
 
 include("../src/decls.jl")
 include("../src/Visuals.jl")
+include("../src/osm_convert.jl")
 
-#using .Decls
-#using .Visuals
+nw = CreateNetworkFromFile(raw".\maps\buffaloF.osm")
 
-g =  SimpleWeightedDiGraph(5)
-add_edge!(g, 2, 3, 730.0)
-add_edge!(g, 3, 1, 910.0)
-add_edge!(g, 2, 1, 110.0)
-add_edge!(g, 5, 2, 230.0)
-add_edge!(g, 1, 3, 100.0)
-add_edge!(g, 4, 1, 700.0)
-add_edge!(g, 5, 4, 330.0)
-
-nw = Decls.Network(g)
-Decls.SetLL(nw, [100., 600., 100., 600., 700.], [100., 100., 600., 600., 400.])
 Decls.SetSpawnAndDestPts!(nw, [1, 3], [5])
-sim = Decls.Simulation(nw, 60.0, maxIter = 200)
+sim = Decls.Simulation(nw, 200.0, maxIter = 20000)
 
 @time Decls.RunSim(sim)
 
@@ -47,3 +36,15 @@ writedlm(raw".\results\log.txt", Decls.simLog, "\n")
 v = @linq sim.simData |> where(:agent .==  1) |> select(:lat, :lon)
 
 compose(Visuals.DrawGraph(Decls.GetIntersectionCoords(nw)), Visuals.MarkPositions(v[:,1], v[:,2]))
+
+ii = dijkstra_shortest_paths(nw.graph,5).parents[1]
+pth = Vector{Int}()
+
+ii = 2
+while ii != 5
+    global ii = dijkstra_shortest_paths(nw.graph,5).parents[ii]
+    push!(pth,ii)
+    if length(pth) > 2000
+        break
+    end
+end

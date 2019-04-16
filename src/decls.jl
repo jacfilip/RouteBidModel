@@ -115,8 +115,6 @@ mutable struct Agent
         a.atRoad = nothing;
         return  a;
     )::Agent
-
-    Agent() = new();
 end
 
 mutable struct Network
@@ -138,7 +136,6 @@ mutable struct Network
             return n)::Network
     Network(g::SimpleWeightedDiGraph, coords::Vector{ENU}) = (
         return Network(g,[(i.east, i.north, i.up) for i in coords]))::Network
-    Network() = new();
     Network(map::MapData) = (return  ConvertToNetwork(map))::Network
 end
 
@@ -147,7 +144,6 @@ mutable struct Simulation
     timeMax::Real
     timeStep::Real
     timeStepVar::Vector{Real}
-    timeToNext::Vector{Tuple{Int,Real}}
     iter::Int
 
     simData::DataFrame
@@ -166,7 +162,6 @@ mutable struct Simulation
         s.timeMax = tmax;
         s.timeStep = dt;
         s.timeStepVar = Vector{Real}();
-        s.timeToNext = Vector{Tuple{Int,Real}}();
         s.timeElapsed = 0;
         s.maxAgents = maxAgents;
         s.isRunning = run;
@@ -174,7 +169,7 @@ mutable struct Simulation
         s.simData = DataFrame(iter = Int[], t = Real[], agent = Int[], node1 = Int[], node2 = Int[], roadPos = Real[], lat = Real[], lon = Real[]);
         s.nextSpawn = 0.;
     return s;)::Simulation
-    Simulation() = new();
+    Simulation() = new()
 end
 
 function GetTimeStep(s::Simulation)::Real
@@ -240,7 +235,10 @@ function ConvertToNetwork(m::MapData)::Network
     g =  SimpleWeightedDiGraph()
     add_vertices!(g, length(m.nodes))
     for edge in m.e
-        add_edge!(g, m.v[edge[1]], m.v[edge[2]], DistanceENU(m.nodes[edge[1]], m.nodes[edge[2]]))
+    #    dist = DistanceENU(m.nodes[edge[1]], m.nodes[edge[2]])
+        dist = m.w[m.v[edge[1]], m.v[edge[2]]]
+        add_edge!(g, m.v[edge[1]], m.v[edge[2]], dist)
+        add_edge!(g, m.v[edge[2]], m.v[edge[1]], dist)
     end
 
     return Network(g, [m.nodes[i] for i in keys(m.nodes)])
@@ -255,7 +253,6 @@ function SetLL(n::Network, lat::Vector{Float64}, lon::Vector{Float64})
         throw(ErrorException("Coords vectors must contain the same number of elements as the number of nodes."))
     end
 
-    #[((i -> (i.lat, i.lon)).(n.intersections))[k] = (lat[k], lon[k]) for k in length(lat)]
     for i in 1:length(lat)
         n.intersections[i].lat = lat[i]
         n.intersections[i].lon = lon[i]
