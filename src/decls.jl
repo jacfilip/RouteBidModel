@@ -127,7 +127,7 @@ mutable struct Network
     numRoads::Int
     agents::Vector{Agent}
     graph::SimpleWeightedDiGraph
-    Network(g::SimpleWeightedDiGraph, coords::Vector{Tuple{Real,Real,Real}}) = (
+    Network(g::SimpleWeightedDiGraph, coords::Vector{Tuple{Float64,Float64,Float64}}) = (
             n = new();
             n.graph = deepcopy(g);
             n.numRoads = 0;
@@ -204,12 +204,12 @@ function GetTimeStep(s::Simulation)::Real
     return s.timeStepVar[s.iter]
 end
 
-function InitNetwork!(n::Network, coords::Vector{Tuple{Real,Real,Real}})
+function InitNetwork!(n::Network, coords::Vector{Tuple{Float64,Float64,Float64}})
     global agentIDmax = 0
     global agentCntr = 0
     n.intersections = Vector{Intersection}(undef,n.graph.weights.m)
     for i in 1:n.graph.weights.m
-        n.intersections[i] = Intersection(i, coords[1], coords[2])
+        n.intersections[i] = Intersection(i, coords[i][1], coords[i][2])
     end
 
     for i in 1:n.graph.weights.m
