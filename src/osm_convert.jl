@@ -22,3 +22,5 @@ end
 map = OpenStreetMapX.parseOSM(raw"C:\Users\jacek.filipowski\github\route-bid-model\maps\buffaloF.osm")
 crop!(map)
 mData = get_map_data(path, mapName, only_intersections = true)
+
+mData.nodes[mData.n[3299]].north

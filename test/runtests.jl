@@ -48,3 +48,5 @@ while ii != 5
         break
     end
 end
+
+sim.network.intersections[3037].posX, sim.network.intersections[3037].posY

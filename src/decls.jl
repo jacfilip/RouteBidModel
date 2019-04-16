@@ -61,18 +61,18 @@ end
 
 mutable struct Intersection
     nodeID::Int
-    lat::Float64
-    lon::Float64
+    posX::Float64
+    posY::Float64
     inRoads::Vector{Road}
     outRoads::Vector{Road}
     spawnPoint::Bool
     destPoint::Bool
 
-    Intersection(id::Int, lat = 0.0, lon = 0.0, spawnPoint = false, destPoint = false) =(
+    Intersection(id::Int, posX = 0.0, posY = 0.0, spawnPoint = false, destPoint = false) =(
         inter = new();
         inter.nodeID = id;
-        inter.lat = lat;
-        inter.lon = lon;
+        inter.posX = posX;
+        inter.posY = posY;
         inter.spawnPoint = spawnPoint;
         inter.destPoint = destPoint;
         inter.inRoads = Vector{Road}();
@@ -166,7 +166,7 @@ mutable struct Simulation
         s.maxAgents = maxAgents;
         s.isRunning = run;
         s.maxIter = maxIter;
-        s.simData = DataFrame(iter = Int[], t = Real[], agent = Int[], node1 = Int[], node2 = Int[], roadPos = Real[], lat = Real[], lon = Real[]);
+        s.simData = DataFrame(iter = Int[], t = Real[], agent = Int[], node1 = Int[], node2 = Int[], roadPos = Real[], posX = Real[], posY = Real[]);
         s.nextSpawn = 0.;
     return s;)::Simulation
     Simulation() = new()
@@ -244,21 +244,21 @@ function ConvertToNetwork(m::MapData)::Network
     return Network(g, [m.nodes[i] for i in keys(m.nodes)])
 end
 
-function SetLL(n::Network, lat::Vector{Float64}, lon::Vector{Float64})
-    if length(lat) != length(lon)
-        throw(ErrorException("Latitude and longitude vectors are of different length."))
-    end
-
-    if length(lon) != length(n.intersections)
-        throw(ErrorException("Coords vectors must contain the same number of elements as the number of nodes."))
-    end
-
-    for i in 1:length(lat)
-        n.intersections[i].lat = lat[i]
-        n.intersections[i].lon = lon[i]
-    end
-    AddRegistry("Cooridanates have been set.")
-end
+# function SetLL(n::Network, lat::Vector{Float64}, lon::Vector{Float64})
+#     if length(lat) != length(lon)
+#         throw(ErrorException("Latitude and longitude vectors are of different length."))
+#     end
+#
+#     if length(lon) != length(n.intersections)
+#         throw(ErrorException("Coords vectors must contain the same number of elements as the number of nodes."))
+#     end
+#
+#     for i in 1:length(lat)
+#         n.intersections[i].lat = lat[i]
+#         n.intersections[i].lon = lon[i]
+#     end
+#     AddRegistry("Cooridanates have been set.")
+# end
 
 function NextSpawnTime(s::Simulation)
     α, θ = 5, 2
@@ -310,15 +310,15 @@ function GetAgentByID(n::Network, id::Int)::Union{Agent,Nothing}
 end
 
 function GetIntersectionCoords(n::Network)::Vector{Tuple{Tuple{Real,Real},Tuple{Real,Real}}}
-    tups = (i -> (i.lat, i.lon)).(n.intersections)
+    tups = (i -> (i.posX, i.posY)).(n.intersections)
 
     return pts = [((tups[r.bNode][1], tups[r.bNode][2]), (tups[r.fNode][1], tups[r.fNode][2])) for r in n.roads]
 end
 
 function GetIntersectionCoords2(n::Network)::DataFrame
-    df = DataFrame(first_lat = Real[], second_lat = Real[], first_lon = Real[],  second_lon = Real[])
+    df = DataFrame(first_X = Real[], second_X = Real[], first_Y = Real[],  second_Y = Real[])
     for p in GetIntersectionCoords(n)
-        push!(df, Dict( :first_lat => p[1][1], :second_lat => p[2][1], :first_lon => p[1][2], :second_lon => p[2][2]))
+        push!(df, Dict( :first_X => p[1][1], :first_Y => p[1][2], :second_X => p[2][1], :second_Y => p[2][2]))
     end
     return df
 end
@@ -430,12 +430,12 @@ function MakeAction!(a::Agent, sim::Simulation)
 end
 
 function DumpInfo(a::Agent, s::Simulation)
-    if (loc = GetAgentLocation(a, s.network)) == nothing
+    loc = GetAgentLocation(a, s.network)
+    if loc == nothing
         return
     else
-        loc = GetAgentLocation(a, s.network)
-        (bx, by) = (s.network.intersections[loc[1]].lon, s.network.intersections[loc[1]].lat)
-        (fx, fy) = (s.network.intersections[loc[2]].lon, s.network.intersections[loc[2]].lat)
+        (bx, by) = (s.network.intersections[loc[1]].posX, s.network.intersections[loc[1]].posY)
+        (fx, fy) = (s.network.intersections[loc[2]].posX, s.network.intersections[loc[2]].posY)
         progress =  a.atRoad == nothing ? 0 : loc[3] / a.atRoad.length
         (x, y) = (bx + progress * (fx - bx), by + progress * (fy - by))
 
@@ -445,8 +445,8 @@ function DumpInfo(a::Agent, s::Simulation)
                                 :node1 => loc[1],
                                 :node2 => loc[2],
                                 :roadPos => loc[3],
-                                :lat => y,
-                                :lon => x
+                                :posX => x,
+                                :posY => y
                                 ))
     end
 end
