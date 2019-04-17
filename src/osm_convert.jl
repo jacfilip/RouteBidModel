@@ -23,4 +23,4 @@ map = OpenStreetMapX.parseOSM(raw"C:\Users\jacek.filipowski\github\route-bid-mod
 crop!(map)
 mData = get_map_data(path, mapName, only_intersections = true)
 
-mData.nodes[mData.n[3299]].north
+mData.nodes[mData.n[5]].east, mData.nodes[mData.n[5]].north

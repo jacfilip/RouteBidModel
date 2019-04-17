@@ -23,9 +23,8 @@ include("../src/Visuals.jl")
 include("../src/osm_convert.jl")
 
 nw = CreateNetworkFromFile(raw".\maps\buffaloF.osm")
-
 Decls.SetSpawnAndDestPts!(nw, [1, 3], [5])
-sim = Decls.Simulation(nw, 200.0, maxIter = 20000)
+sim = Decls.Simulation(nw, 200.0)
 
 @time Decls.RunSim(sim)
 
@@ -33,7 +32,7 @@ CSV.write(raw".\results\history.csv", sim.simData)
 CSV.write(raw".\results\coords.csv", Decls.GetIntersectionCoords2(sim.network))
 writedlm(raw".\results\log.txt", Decls.simLog, "\n")
 
-v = @linq sim.simData |> where(:agent .==  1) |> select(:lat, :lon)
+v = @linq sim.simData |> where(:agent .==  1) |> select(:posX, :posY)
 
 compose(Visuals.DrawGraph(Decls.GetIntersectionCoords(nw)), Visuals.MarkPositions(v[:,1], v[:,2]))
 
@@ -50,3 +49,7 @@ while ii != 5
 end
 
 sim.network.intersections[3037].posX, sim.network.intersections[3037].posY
+
+poiss = Distributions.Poisson(5)
+plot(pdf(poiss, 0:100))
+rand(poiss)
