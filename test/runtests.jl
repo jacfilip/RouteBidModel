@@ -3,6 +3,7 @@ using Pkg
 Pkg.add("LightGraphs")
 Pkg.add("SimpleWeightedGraphs")
 Pkg.add("OpenStreetMapX")
+Pkg.add("OpenStreetMapXPlot")
 Pkg.add("DataFrames")
 Pkg.add("DataFramesMeta")
 Pkg.add("Distributions")
@@ -23,8 +24,9 @@ include("../src/Visuals.jl")
 include("../src/osm_convert.jl")
 
 nw = CreateNetworkFromFile(raw".\maps\buffaloF.osm")
-Decls.SetSpawnAndDestPts!(nw, [1, 3], [5])
-sim = Decls.Simulation(nw, 200.0)
+Decls.SetSpawnAndDestPts!(nw, Decls.GetNodesOutsideRadius(nw,(-2000.,-2000.),4000.), Decls.GetNodesInRadius(nw,(-2000.,-2000.),2000.))
+
+sim = Decls.Simulation(nw, 200.0, maxAgents = 1000)
 
 @time Decls.RunSim(sim)
 
@@ -32,24 +34,16 @@ CSV.write(raw".\results\history.csv", sim.simData)
 CSV.write(raw".\results\coords.csv", Decls.GetIntersectionCoords2(sim.network))
 writedlm(raw".\results\log.txt", Decls.simLog, "\n")
 
-v = @linq sim.simData |> where(:agent .==  1) |> select(:posX, :posY)
-
-compose(Visuals.DrawGraph(Decls.GetIntersectionCoords(nw)), Visuals.MarkPositions(v[:,1], v[:,2]))
-
-ii = dijkstra_shortest_paths(nw.graph,5).parents[1]
 pth = Vector{Int}()
+from, to = 1, 1004
 
-ii = 2
-while ii != 5
-    global ii = dijkstra_shortest_paths(nw.graph,5).parents[ii]
-    push!(pth,ii)
+k = from
+while k != to
+    global k = dijkstra_shortest_paths(nw.graph,to).parents[k]
+    push!(pth,k)
     if length(pth) > 2000
         break
     end
 end
 
-sim.network.intersections[3037].posX, sim.network.intersections[3037].posY
-
-poiss = Distributions.Poisson(5)
-plot(pdf(poiss, 0:100))
-rand(poiss)
+yen = LightGraphs.yen_k_shortest_paths(nw.graph,from,to,nw.graph.weights,3)

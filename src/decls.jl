@@ -25,7 +25,7 @@ agentIDmax = 0
 headway = 1.0
 avgCarLen = 5.0
 
-muteRegistering = true
+muteRegistering = false
 simLog = Vector{String}()
 
 function AddRegistry(msg::String, prompt::Bool = false)
@@ -92,7 +92,7 @@ mutable struct Agent
     bestRoute::Vector{Int}
     alterRoute::Vector{Int}
     reducedGraph::SimpleWeightedDiGraph
-    myBids::Vector{Tuple{Int, Real}}
+    roadBids::Vector{Tuple{Road, Real}}
     VoT::Real
     CoF::Real
     carLength::Real
@@ -108,8 +108,8 @@ mutable struct Agent
         global agentIDmax += 1;
         a.id = agentIDmax;
         a.roadPosition = 0.0;
-        a.myBids = Vector{Tuple{Int,Real}}();
-        a.VoT = 15.0;            #Value of Time $/min ToDo: Draw value
+        a.roadBids = Vector{Tuple{Road,Real}}();
+        a.VoT = 0.25;            #Value of Time $/min ToDo: Draw value
         a.CoF = 0.15e-3;        #Fuel cost $/m #ToDo: Check and draw value
         a.carLength = 3.0;      #m ToDo: Draw value
         a.vMax = 120.0;         #km/h ToDo: Draw value
@@ -127,6 +127,7 @@ mutable struct Network
     numRoads::Int
     agents::Vector{Agent}
     graph::SimpleWeightedDiGraph
+    undirGraph::SimpleWeightedGraph
     Network(g::SimpleWeightedDiGraph, coords::Vector{Tuple{Float64,Float64,Float64}}) = (
             n = new();
             n.graph = deepcopy(g);
@@ -154,10 +155,11 @@ mutable struct Simulation
 
     maxAgents::Int
     maxIter::Int
+    initialAgents::Int
 
     timeElapsed::Real
     isRunning::Bool
-    Simulation(n::Network, tmax::Real; dt::Real = 0, dt_min = 1.0, maxAgents::Int = bigNum, maxIter::Int = bigNum, run::Bool = true) = (
+    Simulation(n::Network, tmax::Real; dt::Real = 0, dt_min = 1.0, maxAgents::Int = bigNum, maxIter::Int = bigNum, run::Bool = true, initialAgents::Int = 200) = (
         s = Simulation();
         s.network = n;
         s.iter = 0;
@@ -167,6 +169,7 @@ mutable struct Simulation
         s.timeStepVar = Vector{Real}();
         s.timeElapsed = 0;
         s.maxAgents = maxAgents;
+        s.initialAgents = floor(initialAgents / 2);
         s.isRunning = run;
         s.maxIter = maxIter;
         s.simData = DataFrame(iter = Int[], t = Real[], agent = Int[], node1 = Int[], node2 = Int[], roadPos = Real[], posX = Real[], posY = Real[]);
@@ -201,7 +204,7 @@ function SetTimeStep!(s::Simulation)::Real
         throw(ErrorException("Error, simulation step is negative!"))
     end
     push!(s.timeStepVar, maximum([t_min, s.dt_min]) + 0.001)
-    AddRegistry("Time step: $(s.timeStepVar[s.iter]) at iter $(s.iter)", true)
+    AddRegistry("Time step: $(s.timeStepVar[s.iter]) at iter $(s.iter)")
     return s.timeStepVar[end]
 end
 
@@ -217,7 +220,7 @@ function InitNetwork!(n::Network, coords::Vector{Tuple{Float64,Float64,Float64}}
         for j in 1:n.graph.weights.n
             if n.graph.weights[i, j] != 0
                 n.numRoads += 1
-                AddRegistry("$(n.numRoads): $(i) -> $(j) = $(n.graph.weights[i,j])", true)
+                AddRegistry("$(n.numRoads): $(i) -> $(j) = $(n.graph.weights[i,j])")
             end
         end
     end
@@ -234,7 +237,21 @@ function InitNetwork!(n::Network, coords::Vector{Tuple{Float64,Float64,Float64}}
             end
         end
     end
-    AddRegistry("Network has been successfully initialized.")
+
+    n.undirGraph = SimpleWeightedGraph()
+    add_vertices!(n.undirGraph, length(n.intersections))
+
+    for r in n.roads
+        add_edge!(n.undirGraph, r.bNode, r.fNode)
+    end
+
+    n.undirGraph.weights .= Inf
+
+    for r in n.roads
+        n.undirGraph.weights[r.bNode, r.fNode] = n.graph.weights[r.bNode, r.fNode]
+    end
+
+    AddRegistry("Network has been successfully initialized.", true)
 end
 
 function ConvertToNetwork(m::MapData)::Network
@@ -264,7 +281,7 @@ function SetSpawnAndDestPts!(n::Network, spawns::Vector{Int}, dests::Vector{Int}
     end
 end
 
-function GetRoadByNodes(n::Network, first::Int, second::Int)::Road
+function GetRoadByNodes(n::Network, first::Int, second::Int)::Union{Road,Nothing}
     if first > length(n.intersections) || second > length(n.intersections)
         error("Node of of boundries")
     else
@@ -274,6 +291,7 @@ function GetRoadByNodes(n::Network, first::Int, second::Int)::Road
             end
         end
     end
+    return nothing
 end
 
 function GetIntersectByNode(n::Network, id::Int)::Intersection
@@ -329,23 +347,24 @@ function GetNodesOutsideRadius(n::Network, pt::Tuple{Real,Real}, r::Real)::Vecto
 end
 
 function CanFitAtRoad(a::Agent, r::Road)::Bool
-    if length(r.agents) < r.capacity
-        return true
-    else
-        return false
-    end
+    return length(r.agents) < r.capacity
 end
 
 function SetVelocityMpS!(r::Road)
     r.curVelocity = min(lin_k_f_model(length(r.agents) * (avgCarLen + headway), r.length, r.vMax), r.vMax) / 3.6
 end
 
-function SpawnAgents(n::Network, dt::Real, t::Real)
+function SpawnAgents(s::Simulation, dt::Real, t::Real)
+    if s.maxAgents == agentCntr
+        return
+    end
+
     λ = 5.0    #avg number of vehicles per second that appear
     k = rand(Distributions.Poisson(λ))
     k = maximum([k, 0])
+    k = minimum([k, s.maxAgents - agentCntr])
     for i in 1:k
-        SpawnAgentAtRandom(n)
+        SpawnAgentAtRandom(s.network)
     end
 end
 
@@ -405,10 +424,10 @@ end
 
 function ReachedIntersection(a::Agent, n::Network)
     if a.atNode == a.destNode
-        AddRegistry("Agent $(a.id) destroyed.", true)
+        AddRegistry("Agent $(a.id) destroyed.")
         DestroyAgent(a, n)
     else
-        AddRegistry("Agent $(a.id) reached intersection $(a.atNode.nodeID)", true)
+        AddRegistry("Agent $(a.id) reached intersection $(a.atNode.nodeID)")
         SetWeights!(a, n)
         if SetShortestPath!(a) == Inf
             return
@@ -430,7 +449,7 @@ function MakeAction!(a::Agent, sim::Simulation)
     if a.atRoad != nothing
         a.roadPosition += a.atRoad.curVelocity * dt
         a.roadPosition = min(a.roadPosition, a.atRoad.length)
-        AddRegistry("Agent $(a.id) has travelled $(GetAgentLocation(a, sim.network)[3]) of $(a.atRoad.length) m from $(GetAgentLocation(a, sim.network)[1]) to $(GetAgentLocation(a, sim.network)[2]) at speed: $(a.atRoad.curVelocity)*3.6) km/h", true)
+        AddRegistry("Agent $(a.id) has travelled $(GetAgentLocation(a, sim.network)[3]) of $(a.atRoad.length) m from $(GetAgentLocation(a, sim.network)[1]) to $(GetAgentLocation(a, sim.network)[2]) at speed: $(a.atRoad.curVelocity)*3.6) km/h")
         if a.roadPosition == a.atRoad.length
             a.atNode = GetIntersectByNode(sim.network, a.atRoad.fNode)
             RemoveFromRoad!(a.atRoad, a)
@@ -477,7 +496,7 @@ function RunSim(s::Simulation)::Bool
             SetVelocityMpS!(r)
         end
 
-        SpawnAgents(s.network, length(s.timeStepVar) < 2 ? 10 : s.timeStepVar[end] - s.timeStepVar[end-1], s.timeElapsed)
+        SpawnAgents(s, length(s.timeStepVar) < 2 ? s.initialAgents : s.timeStepVar[end] - s.timeStepVar[end-1], s.timeElapsed)
 
         for a in s.network.agents
             MakeAction!(a, s)

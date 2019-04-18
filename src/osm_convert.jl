@@ -1,7 +1,6 @@
 include("./decls.jl")
 
 using OpenStreetMapX
-using OpenStreetMapXPlot
 using LightGraphs, SimpleWeightedGraphs
 using GraphPlot
 using Plots
@@ -19,8 +18,6 @@ function CreateNetworkFromFile(filePath::String)::Decls.Network
     return nw
 end
 
-map = OpenStreetMapX.parseOSM(raw"C:\Users\jacek.filipowski\github\route-bid-model\maps\buffaloF.osm")
-crop!(map)
-mData = get_map_data(path, mapName, only_intersections = true)
-
-mData.nodes[mData.n[5]].east, mData.nodes[mData.n[5]].north
+# map = OpenStreetMapX.parseOSM(raw"C:\Users\jacek.filipowski\github\route-bid-model\maps\buffaloF.osm")
+# crop!(map)
+# mData = get_map_data(path, mapName, only_intersections = true)
