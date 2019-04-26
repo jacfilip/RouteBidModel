@@ -47,6 +47,7 @@ mutable struct Road
     curVelocity::Real
     capacity::Int
     lanes::Int
+    ttime::Real
 
     Road(in::Int, out::Int, len::Float64, vel::Float64, lanes::Int = 1) = (
     r = new();
@@ -58,6 +59,7 @@ mutable struct Road
     r.agents = Vector{Int}();
     r.capacity = floor(r.length / (avgCarLen + headway)) * r.lanes;
     r.curVelocity = 0.0;
+    r.ttime = r.length / r.vMax;
     return r;
     )::Road
 end
@@ -92,6 +94,8 @@ mutable struct Agent
     destNode::Intersection
     bestRoute::Vector{Int}
     alterRoute::Vector{Int}
+    timeLeft::Real
+    timeEstim::Real
     #graphCopy::SimpleWeightedDiGraph
     reducedGraph::SimpleWeightedDiGraph
     #roadCosts::SparseArrays.SparseMatrixCSC{Float64,Int64}
@@ -121,6 +125,7 @@ mutable struct Agent
         a.vMax = 120.0;         #km/h ToDo: Draw value
         a.bestRoute = Vector{Int}();
         a.atRoad = nothing;
+        a.timeEstim = 0.;
         return  a;
     )::Agent
 end
@@ -174,10 +179,19 @@ mutable struct Simulation
         s.timeStepVar = Vector{Real}();
         s.timeElapsed = 0;
         s.maxAgents = maxAgents;
-        s.initialAgents = floor(initialAgents / 2);
+        s.initialAgents = floor(initialAgents * dt_min);
         s.isRunning = run;
         s.maxIter = maxIter;
-        s.simData = DataFrame(iter = Int[], t = Real[], agent = Int[], node1 = Int[], node2 = Int[], roadPos = Real[], posX = Real[], posY = Real[]);
+        s.simData = DataFrame(  iter = Int[],
+                                t = Real[],
+                                agent = Int[],
+                                node1 = Int[],
+                                node2 = Int[],
+                                roadPos = Real[],
+                                posX = Real[],
+                                posY = Real[],
+                                t_est = Real[]
+                                );
     return s;)::Simulation
     Simulation() = new()
 end
@@ -356,6 +370,7 @@ end
 
 function SetVelocityMpS!(r::Road)
     r.curVelocity = min(lin_k_f_model(length(r.agents) * (avgCarLen + headway), r.length, r.vMax), r.vMax) / 3.6
+    r.ttime = r.length / r.curVelocity
 end
 
 function SpawnAgents(s::Simulation, dt::Real, t::Real)
@@ -397,12 +412,12 @@ function SetWeights!(a::Agent, n::Network)
     #     end
     # end
     for r in n.roads
-        ttime = r.length / r.curVelocity
-        a.reducedGraph.weights[r.bNode, r.fNode] = ttime * a.VoT + r.length * a.CoF
+        r.ttime = r.length / r.curVelocity
+        a.reducedGraph.weights[r.bNode, r.fNode] = r.ttime * a.VoT + r.length * a.CoF
     end
 end
 
-function SetShortestPath!(a::Agent)::Real
+function SetShortestPath!(a::Agent, n::Network)::Real
     if a.atNode != nothing
         s_star = LightGraphs.dijkstra_shortest_paths(a.reducedGraph, a.destNode.nodeID)
         dist = s_star.dists[a.atNode.nodeID]
@@ -412,10 +427,9 @@ function SetShortestPath!(a::Agent)::Real
             empty!(a.bestRoute)
             while nextNode != 0
                 nextNode = path[nextNode]
-                if nextNode != 0
-                    push!(a.bestRoute, nextNode)
-                end
+                push!(a.bestRoute, nextNode)
             end
+            a.timeEstim = EstimateTime(a, n)
             return dist
         else
             return Inf
@@ -424,9 +438,24 @@ function SetShortestPath!(a::Agent)::Real
     return nothing
 end
 
+function EstimateTime(a::Agent, n::Network)::Real
+    r = GetRoadByNodes(n, a.atNode.nodeID, a.bestRoute[1])
+    ttot = r.ttime
+
+    for i in 2:(length(a.bestRoute)-1)
+        r = GetRoadByNodes(n, a.bestRoute[i-1], a.bestRoute[i])
+        ttot += r.ttime
+    end
+    return ttot
+end
+
+function GetVoT(a::Agent)::Real
+    return a.VoT
+end
+
 function SetAlternativeRoute(a::Agent)::Union{Nothing,Real}
     if a.atNode != nothing
-        
+
     end
 end
 
@@ -457,7 +486,7 @@ function ReachedIntersection(a::Agent, n::Network)
     else
         AddRegistry("Agent $(a.id) reached intersection $(a.atNode.nodeID)")
         SetWeights!(a, n)
-        if SetShortestPath!(a) == Inf
+        if SetShortestPath!(a, n) == Inf
             return
         else                    #turn in new road section
             nextRoad = GetRoadByNodes(n, a.atNode.nodeID, a.bestRoute[1])
@@ -505,7 +534,8 @@ function DumpInfo(a::Agent, s::Simulation)
                                 :node2 => loc[2],
                                 :roadPos => loc[3],
                                 :posX => x,
-                                :posY => y
+                                :posY => y,
+                                :t_est => a.timeEstim,
                                 ))
     end
 end
@@ -523,7 +553,7 @@ function RunSim(s::Simulation)::Bool
             SetVelocityMpS!(r)
         end
 
-        SpawnAgents(s, length(s.timeStepVar) < 2 ? s.initialAgents : s.timeStepVar[end] - s.timeStepVar[end-1], s.timeElapsed)
+        SpawnAgents(s, length(s.timeStepVar) == 0 ? s.initialAgents : s.timeStepVar[end], s.timeElapsed)
 
         for a in s.network.agents
             MakeAction!(a, s)
