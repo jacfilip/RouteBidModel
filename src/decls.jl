@@ -5,6 +5,7 @@ using OpenStreetMapX
 using Compose
 using DataFrames
 using Distributions
+using SparseArrays
 
 export Network
 export Simulation
@@ -91,8 +92,10 @@ mutable struct Agent
     destNode::Intersection
     bestRoute::Vector{Int}
     alterRoute::Vector{Int}
+    #graphCopy::SimpleWeightedDiGraph
     reducedGraph::SimpleWeightedDiGraph
-    roadBids::Vector{Tuple{Road, Real}}
+    #roadCosts::SparseArrays.SparseMatrixCSC{Float64,Int64}
+    #roadBids::Vector{Tuple{Road, Real}}
     VoT::Real
     CoF::Real
     carLength::Real
@@ -102,13 +105,16 @@ mutable struct Agent
         a = new();
         a.atNode = start;
         a.destNode = dest;
+        #a.graphCopy = deepcopy(graph);
+        #a.reducedGraph = ConvertToSimpleDiGraph(a.graphCopy);
+        #a.roadCosts = graph.weights;
         a.reducedGraph = deepcopy(graph);
 
         global agentCntr += 1;
         global agentIDmax += 1;
         a.id = agentIDmax;
         a.roadPosition = 0.0;
-        a.roadBids = Vector{Tuple{Road,Real}}();
+        #a.roadBids = Vector{Tuple{Road,Real}}();
         a.VoT = 0.25;            #Value of Time $/min ToDo: Draw value
         a.CoF = 0.15e-3;        #Fuel cost $/m #ToDo: Check and draw value
         a.carLength = 3.0;      #m ToDo: Draw value
@@ -127,7 +133,6 @@ mutable struct Network
     numRoads::Int
     agents::Vector{Agent}
     graph::SimpleWeightedDiGraph
-    undirGraph::SimpleWeightedGraph
     Network(g::SimpleWeightedDiGraph, coords::Vector{Tuple{Float64,Float64,Float64}}) = (
             n = new();
             n.graph = deepcopy(g);
@@ -203,7 +208,7 @@ function SetTimeStep!(s::Simulation)::Real
      if t_min < 0
         throw(ErrorException("Error, simulation step is negative!"))
     end
-    push!(s.timeStepVar, maximum([t_min, s.dt_min]) + 0.001)
+    push!(s.timeStepVar, maximum([t_min, s.dt_min]))
     AddRegistry("Time step: $(s.timeStepVar[s.iter]) at iter $(s.iter)")
     return s.timeStepVar[end]
 end
@@ -238,19 +243,6 @@ function InitNetwork!(n::Network, coords::Vector{Tuple{Float64,Float64,Float64}}
         end
     end
 
-    n.undirGraph = SimpleWeightedGraph()
-    add_vertices!(n.undirGraph, length(n.intersections))
-
-    for r in n.roads
-        add_edge!(n.undirGraph, r.bNode, r.fNode)
-    end
-
-    n.undirGraph.weights .= Inf
-
-    for r in n.roads
-        n.undirGraph.weights[r.bNode, r.fNode] = n.graph.weights[r.bNode, r.fNode]
-    end
-
     AddRegistry("Network has been successfully initialized.", true)
 end
 
@@ -265,6 +257,18 @@ function ConvertToNetwork(m::MapData)::Network
     end
 
     return Network(g, [m.nodes[m.n[i]] for i in 1:length(m.n)])
+end
+
+function ConvertToSimpleDiGraph(g::SimpleWeightedDiGraph)::LightGraphs.SimpleDiGraph
+    s = SimpleDiGraph(g.weights.n)
+    for i in 1:g.weights.n
+        for j in 1:g.weights.m
+            if g.weights[i, j] != 0
+                add_edge!(s, i, j)
+            end
+        end
+    end
+    return s
 end
 
 function SetSpawnAndDestPts!(n::Network, spawns::Vector{Int}, dests::Vector{Int})
@@ -384,6 +388,14 @@ function DestroyAgent(a::Agent, n::Network)
 end
 
 function SetWeights!(a::Agent, n::Network)
+    # for b in 1:length(a.reducedGraph.fadjlist)
+    #     for f in a.reducedGraph.fadjlist[b]
+    #         if (r = GetRoadByNodes(n,b,f)) != nothing
+    #             ttime = r.length / r.curVelocity
+    #             a.roadCosts[r.bNode, r.fNode] = ttime * a.VoT + r.length * a.CoF
+    #         end
+    #     end
+    # end
     for r in n.roads
         ttime = r.length / r.curVelocity
         a.reducedGraph.weights[r.bNode, r.fNode] = ttime * a.VoT + r.length * a.CoF
@@ -412,6 +424,22 @@ function SetShortestPath!(a::Agent)::Real
     return nothing
 end
 
+function SetAlternativeRoute(a::Agent)::Union{Nothing,Real}
+    if a.atNode != nothing
+        
+    end
+end
+
+# function SetYenShortestPaths!(a::Agent)::Real
+#     if a.atNode != nothing
+#         yen_state = yen_k_shortest_paths(a.reducedGraph, a.destNode.nodeID, 2)
+#         if yen_state.dists[1] != Inf
+#             a.bestRoute = yen_state.paths[1]
+#
+#         end
+#     end
+# end
+
 function GetAgentLocation(a::Agent, n::Network)::Union{Tuple{Int,Int,Real}, Nothing}
     if(a.atNode != nothing)
         return a.atNode.nodeID, a.atNode.nodeID, 0.
@@ -431,8 +459,7 @@ function ReachedIntersection(a::Agent, n::Network)
         SetWeights!(a, n)
         if SetShortestPath!(a) == Inf
             return
-        else                    #turn into a new road section
-            #ToDo: Calculate alterRoute too
+        else                    #turn in new road section
             nextRoad = GetRoadByNodes(n, a.atNode.nodeID, a.bestRoute[1])
             if (CanFitAtRoad(a, nextRoad))
                 push!(nextRoad.agents, a.id)
