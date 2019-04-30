@@ -94,7 +94,6 @@ mutable struct Agent
     destNode::Intersection
     bestRoute::Vector{Int}
     alterRoute::Vector{Int}
-    timeLeft::Real
     timeEstim::Real
     deployTime::Real
     requiredArrivalTime::Real
@@ -102,10 +101,11 @@ mutable struct Agent
     reducedGraph::SimpleWeightedDiGraph
     #roadCosts::SparseArrays.SparseMatrixCSC{Float64,Int64}
     #roadBids::Vector{Tuple{Road, Real}}
-    VoT::Real
-    CoF::Real
+    VoT_base::Real # Base value of time $/min
+    VoT_dev::Real  # value of time deviation regards of time remained -
+    CoF::Real      # fuel cost $/m
     carLength::Real
-    vMax::Real
+    vMax::Real      #maximal car velocity in km/h
 
     Agent(start::Intersection, dest::Intersection, graph::SimpleWeightedDiGraph, deployTime::Real) = (
         a = new();
@@ -121,10 +121,11 @@ mutable struct Agent
         a.id = agentIDmax;
         a.roadPosition = 0.0;
         #a.roadBids = Vector{Tuple{Road,Real}}();
-        a.VoT = 0.25;            #Value of Time $/min ToDo: Draw value
-        a.CoF = 0.15e-3;        #Fuel cost $/m #ToDo: Check and draw value
+        a.VoT_base = maximum([rand(Distributions.Normal(24.52/60, 3.0/60)), 0.0]);
+        a.VoT_dev = rand() * 8.0;
+        a.CoF = 0.15e-3;         #ToDo: Check and draw value
         a.carLength = 3.0;      #m ToDo: Draw value
-        a.vMax = 120.0;         #km/h ToDo: Draw value
+        a.vMax = 120.0;         #km/h
         a.bestRoute = Vector{Int}();
         a.atRoad = nothing;
         a.timeEstim = 0.;
@@ -392,7 +393,7 @@ function SpawnAgents(s::Simulation, dt::Real, t::Real)
     for i in 1:k
         SpawnAgentAtRandom(s.network, s.timeElapsed)
         dt = EstimateTime(s.network, s.network.agents[end].atNode.nodeID, s.network.agents[end].destNode.nodeID)
-        s.network.agents[end].requiredArrivalTime = rand(Distributions.Normal(s.timeElapsed + (1.+ϵ) * dt, σ * dt))
+        s.network.agents[end].requiredArrivalTime = rand(Distributions.Normal(s.timeElapsed + (1.0+ϵ) * dt, σ * dt))
     end
 end
 
@@ -411,18 +412,10 @@ function DestroyAgent(a::Agent, n::Network)
     global agentCntr -= 1
 end
 
-function SetWeights!(a::Agent, n::Network)
-    # for b in 1:length(a.reducedGraph.fadjlist)
-    #     for f in a.reducedGraph.fadjlist[b]
-    #         if (r = GetRoadByNodes(n,b,f)) != nothing
-    #             ttime = r.length / r.curVelocity
-    #             a.roadCosts[r.bNode, r.fNode] = ttime * a.VoT + r.length * a.CoF
-    #         end
-    #     end
-    # end
-    for r in n.roads
+function SetWeights!(a::Agent, s::Simulation)
+    for r in s.network.roads
         r.ttime = r.length / r.curVelocity
-        a.reducedGraph.weights[r.bNode, r.fNode] = r.ttime * a.VoT + r.length * a.CoF
+        a.reducedGraph.weights[r.bNode, r.fNode] = r.ttime * GetVoT(a, s.timeElapsed) + r.length * a.CoF
     end
 end
 
@@ -471,8 +464,10 @@ function EstimateTime(n::Network, start::Int, dest::Int)::Real
     return ttot
 end
 
-function GetVoT(a::Agent)::Real
-    return a.VoT
+function GetVoT(a::Agent, t::Real)::Real
+    timeGlut = a.requiredArrivalTime - (t + a.timeEstim)
+
+    return a.VoT_base * exp(-a.VoT_dev * timeGlut)
 end
 
 function SetAlternativeRoute(a::Agent)::Union{Nothing,Real}
@@ -501,13 +496,14 @@ function GetAgentLocation(a::Agent, n::Network)::Union{Tuple{Int,Int,Real}, Noth
     end
 end
 
-function ReachedIntersection(a::Agent, n::Network)
+function ReachedIntersection(a::Agent, s::Simulation)
+    n = s.network
     if a.atNode == a.destNode
         AddRegistry("Agent $(a.id) destroyed.")
         DestroyAgent(a, n)
     else
         AddRegistry("Agent $(a.id) reached intersection $(a.atNode.nodeID)")
-        SetWeights!(a, n)
+        SetWeights!(a, s)
         if SetShortestPath!(a, n) == Inf
             return
         else                    #turn in new road section
@@ -534,7 +530,7 @@ function MakeAction!(a::Agent, sim::Simulation)
         end
     end
     if a.atNode != nothing
-        ReachedIntersection(a, sim.network)
+        ReachedIntersection(a, sim)
     end
     DumpInfo(a, sim)
 end
