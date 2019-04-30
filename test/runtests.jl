@@ -10,6 +10,9 @@ Pkg.add("Distributions")
 Pkg.add("CSV")
 Pkg.add("Compose")
 Pkg.add("Random")
+Pkg.add("IJulia")
+Pkg.add("Conda")
+Pkg.add("PyCall")
 
 using Test
 using OpenStreetMapX, OpenStreetMapXPlot
@@ -28,10 +31,10 @@ include("../src/osm_convert.jl")
 
 Random.seed!(0)
 
-nw = CreateNetworkFromFile(raw".\maps\buffaloF.osm")
+nw = CreateNetworkFromFile("maps", "buffaloF.osm")
 Decls.SetSpawnAndDestPts!(nw, Decls.GetNodesOutsideRadius(nw,(-2000.,-2000.),4000.), Decls.GetNodesInRadius(nw,(-2000.,-2000.),2000.))
 
-sim = Decls.Simulation(nw, 100.0, maxAgents = 1000, dt = 2.0)
+sim = Decls.Simulation(nw, 100.0, maxAgents = 1000, dt = 5.0)
 
 @time Decls.RunSim(sim)
 
