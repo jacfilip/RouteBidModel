@@ -5,7 +5,6 @@ using OpenStreetMapX
 using Compose
 using DataFrames
 using Distributions
-using SparseArrays
 
 export Network
 export Simulation
@@ -18,13 +17,16 @@ export RunSim
 export SetSpawnAndDestPts!
 export SpawnAgentAtRandom
 
-bigNum = 1000000
+using Random
+Random.seed!(0);
+
+bigNum = 1000
 
 agentCntr = 0
 agentIDmax = 0
 
-headway = 1.0
-avgCarLen = 5.0
+headway = 0.25
+avgCarLen = 0.5
 
 muteRegistering = false
 simLog = Vector{String}()
@@ -47,7 +49,6 @@ mutable struct Road
     curVelocity::Real
     capacity::Int
     lanes::Int
-    ttime::Real
 
     Road(in::Int, out::Int, len::Float64, vel::Float64, lanes::Int = 1) = (
     r = new();
@@ -59,7 +60,6 @@ mutable struct Road
     r.agents = Vector{Int}();
     r.capacity = floor(r.length / (avgCarLen + headway)) * r.lanes;
     r.curVelocity = 0.0;
-    r.ttime = r.length / r.vMax;
     return r;
     )::Road
 end
@@ -91,44 +91,36 @@ mutable struct Agent
     atRoad::Union{Road,Nothing}
     roadPosition::Real
     atNode::Union{Intersection,Nothing}
+    BorS::Int64
     destNode::Intersection
     bestRoute::Vector{Int}
     alterRoute::Vector{Int}
-    timeLeft::Real
-    timeEstim::Real
-    deployTime::Real
-    requiredArrivalTime::Real
-    #graphCopy::SimpleWeightedDiGraph
     reducedGraph::SimpleWeightedDiGraph
-    #roadCosts::SparseArrays.SparseMatrixCSC{Float64,Int64}
-    #roadBids::Vector{Tuple{Road, Real}}
+    roadBids::Vector{Tuple{Road, Real}}
     VoT::Real
     CoF::Real
     carLength::Real
     vMax::Real
 
-    Agent(start::Intersection, dest::Intersection, graph::SimpleWeightedDiGraph, deployTime::Real) = (
+    Agent(start::Intersection, dest::Intersection, graph::SimpleWeightedDiGraph) = (
         a = new();
         a.atNode = start;
         a.destNode = dest;
-        #a.graphCopy = deepcopy(graph);
-        #a.reducedGraph = ConvertToSimpleDiGraph(a.graphCopy);
-        #a.roadCosts = graph.weights;
         a.reducedGraph = deepcopy(graph);
 
         global agentCntr += 1;
         global agentIDmax += 1;
         a.id = agentIDmax;
         a.roadPosition = 0.0;
-        #a.roadBids = Vector{Tuple{Road,Real}}();
+        a.roadBids = Vector{Tuple{Road,Real}}();
         a.VoT = 0.25;            #Value of Time $/min ToDo: Draw value
         a.CoF = 0.15e-3;        #Fuel cost $/m #ToDo: Check and draw value
         a.carLength = 3.0;      #m ToDo: Draw value
         a.vMax = 120.0;         #km/h ToDo: Draw value
         a.bestRoute = Vector{Int}();
+        a.alterRoute = Vector{Int}();
         a.atRoad = nothing;
-        a.timeEstim = 0.;
-        a.deployTime = deployTime;
+        a.BorS = rand(Categorical([0.5,0.5]),1)[1];
         return  a;
     )::Agent
 end
@@ -141,6 +133,7 @@ mutable struct Network
     numRoads::Int
     agents::Vector{Agent}
     graph::SimpleWeightedDiGraph
+    undirGraph::SimpleWeightedGraph
     Network(g::SimpleWeightedDiGraph, coords::Vector{Tuple{Float64,Float64,Float64}}) = (
             n = new();
             n.graph = deepcopy(g);
@@ -182,56 +175,12 @@ mutable struct Simulation
         s.timeStepVar = Vector{Real}();
         s.timeElapsed = 0;
         s.maxAgents = maxAgents;
-        s.initialAgents = floor(initialAgents * dt_min);
+        s.initialAgents = floor(initialAgents / 2);
         s.isRunning = run;
         s.maxIter = maxIter;
-        s.simData = DataFrame(  iter = Int[],
-                                t = Real[],
-                                agent = Int[],
-                                node1 = Int[],
-                                node2 = Int[],
-                                roadPos = Real[],
-                                posX = Real[],
-                                posY = Real[],
-                                t_est = Real[]
-                                );
+        s.simData = DataFrame(iter = Int[], t = Real[], agent = Int[], node1 = Int[], node2 = Int[], roadPos = Real[], posX = Real[], posY = Real[]);
     return s;)::Simulation
     Simulation() = new()
-end
-
-function GetTimeStep(s::Simulation)::Real
-    if s.timeStep != 0
-        return s.timeStep
-    elseif length(s.timeStepVar) > 0
-        return s.timeStepVar[end]
-    else
-        return 0
-    end
-
-end
-
-function SetTimeStep!(s::Simulation)::Real
-    if s.timeStep != 0
-        push!(s.timeStepVar, s.timeStep)
-    else
-        t_min = Inf
-         for r in s.network.roads
-             if !isempty(r.agents)
-                if (t = (r.length - GetAgentByID(s.network, r.agents[1]).roadPosition) / r.curVelocity) < t_min
-                    t_min = t
-                end
-             end
-         end
-
-         t_min = t_min == Inf ? 0.0 : t_min
-
-         if t_min < 0
-            throw(ErrorException("Error, simulation step is negative!"))
-        end
-        push!(s.timeStepVar, maximum([t_min, s.dt_min]))
-    end
-    #AddRegistry("Time step: $(s.timeStepVar[s.iter]) at iter $(s.iter)")
-    return s.timeStepVar[end]
 end
 
 function InitNetwork!(n::Network, coords::Vector{Tuple{Float64,Float64,Float64}})
@@ -264,6 +213,19 @@ function InitNetwork!(n::Network, coords::Vector{Tuple{Float64,Float64,Float64}}
         end
     end
 
+    n.undirGraph = SimpleWeightedGraph()
+    add_vertices!(n.undirGraph, length(n.intersections))
+
+    for r in n.roads
+        add_edge!(n.undirGraph, r.bNode, r.fNode)
+    end
+
+    n.undirGraph.weights .= Inf
+
+    for r in n.roads
+        n.undirGraph.weights[r.bNode, r.fNode] = n.graph.weights[r.bNode, r.fNode]
+    end
+
     AddRegistry("Network has been successfully initialized.", true)
 end
 
@@ -280,18 +242,6 @@ function ConvertToNetwork(m::MapData)::Network
     return Network(g, [m.nodes[m.n[i]] for i in 1:length(m.n)])
 end
 
-function ConvertToSimpleDiGraph(g::SimpleWeightedDiGraph)::LightGraphs.SimpleDiGraph
-    s = SimpleDiGraph(g.weights.n)
-    for i in 1:g.weights.n
-        for j in 1:g.weights.m
-            if g.weights[i, j] != 0
-                add_edge!(s, i, j)
-            end
-        end
-    end
-    return s
-end
-
 function SetSpawnAndDestPts!(n::Network, spawns::Vector{Int}, dests::Vector{Int})
     empty!(n.spawns)
     for i in spawns
@@ -306,23 +256,23 @@ function SetSpawnAndDestPts!(n::Network, spawns::Vector{Int}, dests::Vector{Int}
     end
 end
 
-function GetRoadByNodes(n::Network, first::Int, second::Int)::Union{Road,Nothing}
-    if first > length(n.intersections) || second > length(n.intersections)
+function GetRoadByNodes(n::Network, first::Int, second::Int)::Union{Road,Nothing} #Take two nodes, get road between them
+    if first > length(n.intersections) || second > length(n.intersections) #If ID of either nodes not in intersections range give error
         error("Node of of boundries")
-    else
-        for r in n.roads
-            if r.bNode == first && r.fNode == second
-                return r
+    else #Otherwise
+        for r in n.roads #For each road
+            if r.bNode == first && r.fNode == second #If beggining node equals first and...etc.
+                return r #Return the road
             end
         end
     end
     return nothing
 end
 
-function GetIntersectByNode(n::Network, id::Int)::Intersection
+function GetIntersectByNode(n::Network, id::Int)::Intersection #Takes the network and node ID of the node Intersection it's currently on
     for i in n.intersections
         if i.nodeID == id
-            return i
+            return i #Return the information for the intersection they're on
         end
     end
     return nothing
@@ -372,12 +322,12 @@ function GetNodesOutsideRadius(n::Network, pt::Tuple{Real,Real}, r::Real)::Vecto
 end
 
 function CanFitAtRoad(a::Agent, r::Road)::Bool
-    return length(r.agents) < r.capacity
+    return length(r.agents) < r.capacity #Check theres room on road for agent
 end
 
-function SetVelocityMpS!(r::Road)
+function SetVelocityMpS!(r::Road) #Set Velocity function
     r.curVelocity = min(lin_k_f_model(length(r.agents) * (avgCarLen + headway), r.length, r.vMax), r.vMax) / 3.6
-    r.ttime = r.length / r.curVelocity
+    #Set the current velocity all cars are going on this road based on length, number of agents on the road (congestion), etc.
 end
 
 function SpawnAgents(s::Simulation, dt::Real, t::Real)
@@ -386,19 +336,26 @@ function SpawnAgents(s::Simulation, dt::Real, t::Real)
     end
 
     λ = 5.0    #avg number of vehicles per second that appear
-    σ = 0.1    #standard deviation as a share of expected travel time
-    ϵ = 0.05   #starting time glut as a share of travel time
-    k = minimum([maximum([rand(Distributions.Poisson(λ * dt)), 0]), s.maxAgents - agentCntr])
+    k = rand(Distributions.Poisson(λ))
+    k = maximum([k, 0])
+    k = minimum([k, s.maxAgents - agentCntr]) #k is the number of agents to spawn
     for i in 1:k
-        SpawnAgentAtRandom(s.network, s.timeElapsed)
-        dt = EstimateTime(s.network, s.network.agents[end].atNode.nodeID, s.network.agents[end].destNode.nodeID)
-        s.network.agents[end].requiredArrivalTime = rand(Distributions.Normal(s.timeElapsed + (1.+ϵ) * dt, σ * dt))
+        SpawnAgentAtRandom(s.network) #Randomly spawn an agent
     end
 end
 
-function SpawnAgentAtRandom(n::Network, time::Real = 0.)
-    push!(n.agents, Agent(n.intersections[rand(n.spawns)],n.intersections[rand(n.dests)],n.graph, time))
-    AddRegistry("Agent #$(agentIDmax) has been created.")
+function SpawnAgentAtRandom(n::Network)
+    start = Int64
+    dest = Int64
+    create_agent = false
+
+    while create_agent == false
+        start = rand(n.spawns)
+        dest = rand(n.dests)
+        create_agent = IsRoutePossible(n,start,dest)
+    end
+    push!(n.agents, Agent(n.intersections[start],n.intersections[dest],n.graph)) #Randomly spawn an agent within the outer region
+    AddRegistry("Agent #$(agentIDmax) has been created.") #Adds to registry that agent has been created
 end
 
 function RemoveFromRoad!(r::Road, a::Agent)
@@ -407,38 +364,31 @@ function RemoveFromRoad!(r::Road, a::Agent)
 end
 
 function DestroyAgent(a::Agent, n::Network)
-    deleteat!(n.agents, findall(b -> b.id == a.id, n.agents))
-    global agentCntr -= 1
+    deleteat!(n.agents, findall(b -> b.id == a.id, n.agents)) #Deletes the agent from the network
+    global agentCntr -= 1 #Global current agents in the network is subtracted by 1
 end
 
 function SetWeights!(a::Agent, n::Network)
-    # for b in 1:length(a.reducedGraph.fadjlist)
-    #     for f in a.reducedGraph.fadjlist[b]
-    #         if (r = GetRoadByNodes(n,b,f)) != nothing
-    #             ttime = r.length / r.curVelocity
-    #             a.roadCosts[r.bNode, r.fNode] = ttime * a.VoT + r.length * a.CoF
-    #         end
-    #     end
-    # end
-    for r in n.roads
-        r.ttime = r.length / r.curVelocity
-        a.reducedGraph.weights[r.bNode, r.fNode] = r.ttime * a.VoT + r.length * a.CoF
+    for r in n.roads #For each road in the network
+        ttime = r.length / r.curVelocity #Length of the road / current velocity on road
+        a.reducedGraph.weights[r.bNode, r.fNode] = ttime * a.VoT + r.length * a.CoF  #Reset the weights of each road in the agents' graph
     end
 end
 
-function SetShortestPath!(a::Agent, n::Network)::Real
-    if a.atNode != nothing
-        s_star = LightGraphs.dijkstra_shortest_paths(a.reducedGraph, a.destNode.nodeID)
-        dist = s_star.dists[a.atNode.nodeID]
-        if dist != Inf
-            nextNode = a.atNode.nodeID
+function SetShortestPath!(a::Agent)::Real #When would this return INFINITY??
+    if a.atNode != nothing #If the agent is at the
+        s_star = LightGraphs.dijkstra_shortest_paths(a.reducedGraph, a.destNode.nodeID) #Find the shortest path between the node currently at and destination node
+        dist = s_star.dists[a.atNode.nodeID] #Distance (?)
+        if dist != Inf #If distance isn't infinity
+            nextNode = a.atNode.nodeID #Next node equals the ID of the node agent is currently on
             path = s_star.parents
-            empty!(a.bestRoute)
-            while nextNode != 0
-                nextNode = path[nextNode]
-                push!(a.bestRoute, nextNode)
+            empty!(a.bestRoute) #Remove all elements in this array
+            while nextNode != 0 #While nextNode doesn't equal zero
+                nextNode = path[nextNode] #Get next road travelled in shortest path
+                if nextNode != 0
+                    push!(a.bestRoute, nextNode) #Add road to overall shortest path
+                end
             end
-            a.timeEstim = EstimateTime(n, a.atNode.nodeID, a.destNode.nodeID)
             return dist
         else
             return Inf
@@ -447,52 +397,8 @@ function SetShortestPath!(a::Agent, n::Network)::Real
     return nothing
 end
 
-#Estimates how much more time agent needs to reach his destination point
-
-function EstimateTime(n::Network, start::Int, dest::Int)::Real
-    if start == dest
-        return 0
-    end
-
-    pth = dijkstra_shortest_paths(n.graph, dest)
-
-    if(pth.dists[start] == Inf)
-        return Inf
-#        throw(ErrorException("Cannot find route between $(start) and $(dest)."))
-    end
-
-    ttot = 0.
-    nxt = prev = start
-
-    while (nxt = pth.parents[prev]) != 0
-        ttot += GetRoadByNodes(n, prev, nxt).ttime
-        prev = nxt
-    end
-    return ttot
-end
-
-function GetVoT(a::Agent)::Real
-    return a.VoT
-end
-
-function SetAlternativeRoute(a::Agent)::Union{Nothing,Real}
-    if a.atNode != nothing
-
-    end
-end
-
-# function SetYenShortestPaths!(a::Agent)::Real
-#     if a.atNode != nothing
-#         yen_state = yen_k_shortest_paths(a.reducedGraph, a.destNode.nodeID, 2)
-#         if yen_state.dists[1] != Inf
-#             a.bestRoute = yen_state.paths[1]
-#
-#         end
-#     end
-# end
-
 function GetAgentLocation(a::Agent, n::Network)::Union{Tuple{Int,Int,Real}, Nothing}
-    if(a.atNode != nothing)
+    if (a.atNode != nothing)
         return a.atNode.nodeID, a.atNode.nodeID, 0.
     elseif a.atRoad != nothing
         return a.atRoad.bNode, a.atRoad.fNode, a.roadPosition
@@ -501,42 +407,78 @@ function GetAgentLocation(a::Agent, n::Network)::Union{Tuple{Int,Int,Real}, Noth
     end
 end
 
-function ReachedIntersection(a::Agent, n::Network)
-    if a.atNode == a.destNode
-        AddRegistry("Agent $(a.id) destroyed.")
-        DestroyAgent(a, n)
-    else
+function ReachedIntersection(a::Agent, n::Network) #Takes the agent and network
+    if a.atNode == a.destNode #If the the node the agent is at is their destination node
+        AddRegistry("Agent $(a.id) destroyed.", true) #Add to registry that agent has been destroyed
+        DestroyAgent(a, n) #Destroy the agent
+    else #Otherwise if the agent hasn't yet arrived at their destination
         AddRegistry("Agent $(a.id) reached intersection $(a.atNode.nodeID)")
-        SetWeights!(a, n)
-        if SetShortestPath!(a, n) == Inf
+        SetWeights!(a, n) #Reset weight on edges for agent network
+        if SetShortestPath!(a) == Inf
+            # println("##########")
+            println("Agent $(a.id) has a path of infinity. That's not good news!")
+            # println("##########")
             return
-        else                    #turn in new road section
-            nextRoad = GetRoadByNodes(n, a.atNode.nodeID, a.bestRoute[1])
-            if (CanFitAtRoad(a, nextRoad))
-                push!(nextRoad.agents, a.id)
-                a.atRoad = nextRoad
-                a.roadPosition = 0.0
-                a.atNode = nothing
+        else            #turn into a new road section
+            # println("We are deleting the path between node $(a.atNode.nodeID) and $(a.bestRoute[1])")
+            SetAlternatePath!(a,a.bestRoute[1],a.atNode.nodeID,a.destNode.nodeID)
+            if (length(a.alterRoute) != 0) && (length(a.bestRoute) >= 2)
+                GrabBuyersGoingDirection(n,a.atNode,a.bestRoute[1])
+                # CommenceBidding()
+            end
+            # println(a.bestRoute)
+            # println(a.alterRoute)
+
+            nextRoad = GetRoadByNodes(n, a.atNode.nodeID, a.bestRoute[1]) #Get the road agent is turning on
+
+            if (CanFitAtRoad(a, nextRoad)) #Check that he fits on the road
+                push!(nextRoad.agents, a.id) #Add agents ID onto roads agents array
+                a.atRoad = nextRoad #Set agent on new road
+                a.roadPosition = 0.0 #Set his position on road to zero
+                a.atNode = nothing #Agent no longer at node
+            else
+                println()
+                println("CANT FIT TO ROAD!!!! for agent $(a.id)")
+                println("The road length $(nextRoad.length)")
+                println("The road capacity $(nextRoad.capacity)")
+                println("The number of agents currently on that road $(length(nextRoad.agents))")
+
             end
         end
     end
 end
 
-function MakeAction!(a::Agent, sim::Simulation)
-    dt = GetTimeStep(sim)
-    if a.atRoad != nothing
-        a.roadPosition += a.atRoad.curVelocity * dt
-        a.roadPosition = min(a.roadPosition, a.atRoad.length)
-        AddRegistry("Agent $(a.id) has travelled $(GetAgentLocation(a, sim.network)[3]) of $(a.atRoad.length) m from $(GetAgentLocation(a, sim.network)[1]) to $(GetAgentLocation(a, sim.network)[2]) at speed: $(a.atRoad.curVelocity)*3.6) km/h")
-        if a.roadPosition == a.atRoad.length
-            a.atNode = GetIntersectByNode(sim.network, a.atRoad.fNode)
-            RemoveFromRoad!(a.atRoad, a)
-        end
-    end
+function MakeAction!(a::Agent, sim::Simulation) #Takes an agent ID and simulation
+    dt = sim.timeStep
+    # println("#######################")
+    # if a.atNode != nothing
+    #     println("Agent $(a.id) is at node $(a.atNode.nodeID)")
+    # elseif a.atRoad != nothing
+    #     println("Agent $(a.id) is on the road between $(a.atRoad.bNode) and $(a.atRoad.fNode). He is $(a.roadPosition) of $(a.atRoad.length) done")
+    # end
+    # println("Now running the iteration and moving agent")
     if a.atNode != nothing
+        println("Agent $(a.id) is at the intersection $(a.atNode.nodeID) so we stopped")
+        # println("Agent $(a.id) is about to run the function ReachedIntersection")
         ReachedIntersection(a, sim.network)
     end
-    DumpInfo(a, sim)
+
+    if a.atRoad != nothing
+        a.roadPosition += a.atRoad.curVelocity * dt #The velocity of the road agent is currently on multiplied by the timestep
+        a.roadPosition = min(a.roadPosition, a.atRoad.length) #Take the minimum value between the position they are on the road and the length of that road
+        AddRegistry("Agent $(a.id) has travelled $(GetAgentLocation(a, sim.network)[3]) of $(a.atRoad.length) m from $(GetAgentLocation(a, sim.network)[1]) to $(GetAgentLocation(a, sim.network)[2]) at speed: $(a.atRoad.curVelocity)*3.6) km/h")
+        if a.roadPosition == a.atRoad.length #If their road position is at the end of the road
+            a.atNode = GetIntersectByNode(sim.network, a.atRoad.fNode) #Set the node I'm currently at
+            RemoveFromRoad!(a.atRoad, a) #Remove the agent from the road they were on
+        end
+    end
+    # if a.atNode != nothing
+    #     println("Agent $(a.id) is at node $(a.atNode.nodeID)")
+    # elseif a.atRoad != nothing
+    #     println("Agent $(a.id) is on the road between $(a.atRoad.bNode) and $(a.atRoad.fNode). He is $(a.roadPosition) of $(a.atRoad.length) done")
+    # end
+    # println("#######################")
+    DumpInfo(a, sim) #Dump info into dataframe
 end
 
 function DumpInfo(a::Agent, s::Simulation)
@@ -556,34 +498,40 @@ function DumpInfo(a::Agent, s::Simulation)
                                 :node2 => loc[2],
                                 :roadPos => loc[3],
                                 :posX => x,
-                                :posY => y,
-                                :t_est => a.timeEstim,
+                                :posY => y
                                 ))
     end
 end
 
 function RunSim(s::Simulation)::Bool
+    global once
     if !s.isRunning
         return false
     end
-
     while s.timeElapsed < s.timeMax
-        s.iter += 1
-        AddRegistry("Iter #$(s.iter), time: $(s.timeElapsed), no. of agents: $(agentCntr), agents in total: $agentIDmax", true)
-
-        for r in s.network.roads
+        s.iter += 1 #Add new number of iteration
+        AddRegistry("Beginning Iter #$(s.iter)", true)
+        for r in s.network.roads #For each road in the network, set the velocity of the road based on congestion, etc.
             SetVelocityMpS!(r)
         end
 
-        SpawnAgents(s, length(s.timeStepVar) == 0 ? 1.0 : s.timeStepVar[end], s.timeElapsed)
+        #Spawn some number of agents
+        SpawnAgents(s, length(s.timeStepVar) < 2 ? s.initialAgents : s.timeStepVar[end] - s.timeStepVar[end-1], s.timeElapsed)
 
+        GetTimeToIntersections(s)
+        # println("The timestep now will be $(s.timeStep) ")
+
+
+        #For each agent in the network
         for a in s.network.agents
-            MakeAction!(a, s)
+            MakeAction!(a, s) #Do action
         end
 
-        if s.iter > s.maxIter return false end
+        s.timeElapsed += s.timeStep
+        AddRegistry("Iter #$(s.iter) is complete, time: $(s.timeElapsed), no. of agents: $(agentCntr), agents in total: $agentIDmax", true)
+        println("###################################")
 
-        s.timeElapsed += SetTimeStep!(s)
+        if s.iter > s.maxIter return false end
     end
     return true
 end
@@ -603,5 +551,77 @@ end
 function EuclideanNorm(p1::Tuple{Real,Real}, p2::Tuple{Real,Real})
     return sqrt((p1[1] - p2[1])^2 + (p1[2] - p2[2])^2)
 end
+
+function GetTimeToIntersections(s::Simulation)
+    t_min = Inf
+    for r in s.network.roads #For each road in the network
+        if !isempty(r.agents) #If the road isn't empty
+           if (t = (r.length - GetAgentByID(s.network, r.agents[1]).roadPosition) / r.curVelocity) < t_min
+               t_min = t #Set this as the new minimum time
+           end
+        end
+    end
+    t_min = t_min == Inf ? 1.0 : t_min #If t_min equals infinity, then set t_min to zero, otherwise, leave it as is
+    t_min = t_min < 1.0 ? 1.0 : t_min
+    s.timeStep = t_min
+    push!(s.timeStepVar,t_min)
+end
+
+function IsRoutePossible(n::Network, startNode::Int64, endNode::Int64)
+    route = LightGraphs.dijkstra_shortest_paths(n.graph,endNode)
+    dist = route.dists[startNode]
+    if dist == Inf
+        return false
+    return true
+    end
+end
+
+function SetAlternatePath!(a::Agent, delNode::Int, bNode::Int, fNode::Int)
+    if a.atNode != nothing
+        oVal = a.reducedGraph.weights[bNode,delNode]
+        a.reducedGraph.weights[bNode,delNode] = Inf
+        s_cross = LightGraphs.dijkstra_shortest_paths(a.reducedGraph, a.destNode.nodeID)
+        dist = s_cross.dists[a.atNode.nodeID]
+        if dist != Inf
+            nextNode = a.atNode.nodeID
+            path = s_cross.parents
+            empty!(a.alterRoute)
+            while nextNode !=0
+                nextNode = path[nextNode]
+                if nextNode != 0
+                    push!(a.alterRoute, nextNode)
+                end
+            end
+            a.reducedGraph.weights[bNode,delNode] = oVal
+            return dist
+        else
+            a.reducedGraph.weights[bNode,delNode] = oVal
+            return Inf
+        end
+    end
+    return nothing
+end
+
+function GrabBuyersGoingDirection(nw::Network, inter::Intersection, destNode::Int64)
+    buyers = Agent[]
+    for road in inter.inRoads
+        if length(road.agents) != 0
+            for a in road.agents
+                agent = GetAgentByID(nw, a)
+                if length(agent.bestRoute) >=2
+                    if agent.bestRoute[2] == destNode
+                        push!(buyers,agent)
+                    end
+                end
+            end
+        end
+    end
+    return buyers
+end
+
+function CommenceBidding()
+    println("BID!")
+end
+
 
 end  # module  Decls
