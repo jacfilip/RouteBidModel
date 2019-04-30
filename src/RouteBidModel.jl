@@ -10,6 +10,8 @@ Pkg.add("DataFramesMeta")
 Pkg.add("Distributions")
 Pkg.add("CSV")
 Pkg.add("Compose")
+Pkg.add("Colors")
+Pkg.add("Plots")
 
 using Test
 using OpenStreetMapX
