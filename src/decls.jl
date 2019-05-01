@@ -25,8 +25,12 @@ bigNum = 1000000
 agentCntr = 0
 agentIDmax = 0
 
-headway = 0.25
-avgCarLen = 0.5
+headway = 0.5
+avgCarLen = 5.
+
+auctionTimeInterval = 20.0
+auctionMinCongestion = 0.1
+auctionMinParticipants = 2
 
 muteRegistering = false
 simLog = Vector{String}()
@@ -46,10 +50,12 @@ mutable struct Road
     bNode::Int
     fNode::Int
     vMax::Real
+    vMin::Real
     curVelocity::Real
     capacity::Int
     lanes::Int
     ttime::Real
+    MTS::Real   #Marginal Time Saving: travel time saved by removing one commuter
 
     Road(in::Int, out::Int, len::Float64, vel::Float64, lanes::Int = 1) = (
     r = new();
@@ -58,10 +64,12 @@ mutable struct Road
     r.lanes = lanes;
     r.length = len;
     r.vMax = vel;       #ToDo: retrieve from osm
+    r.vMin = 1. /3.6;
     r.agents = Vector{Int}();
-    r.capacity = floor(r.length / (avgCarLen + headway)) * r.lanes;
+    r.capacity = ceil(r.length / (avgCarLen + headway)) * r.lanes;
     r.curVelocity = 0.0;
     r.ttime = r.length / r.vMax;
+    r.MTS = 0.;
     return r;
     )::Road
 end
@@ -111,7 +119,9 @@ mutable struct Agent
     carLength::Real
     vMax::Real      #maximal car velocity in km/h
 
-    Agent(start::Intersection, dest::Intersection, graph::SimpleWeightedDiGraph, deployTime::Real) = (
+    isSmart::Bool
+
+    Agent(start::Intersection, dest::Intersection, graph::SimpleWeightedDiGraph, deployTime::Real, arrivTime::Real) = (
         a = new();
         a.atNode = start;
         a.destNode = dest;
@@ -125,15 +135,17 @@ mutable struct Agent
         a.VoT_dev = rand() * 8.0;
         a.CoF = 0.15e-3;         #ToDo: Check and draw value
         a.carLength = 3.0;      #m ToDo: Draw value
-        a.vMax = 120.0;         #km/h
+        a.vMax = 120.0 / 3.6;         #km/h
         a.bestRoute = Vector{Int}();
         a.alterRoute = Vector{Int}();
         a.atRoad = nothing;
         a.BorS = rand(Categorical([0.5,0.5]),1)[1];
         a.deployTime = deployTime;
         a.timeEstim = 0.;
+        a.requiredArrivalTime = arrivTime;
         a.bestRouteCost = 0.;
         a.alterRouteCost = 0.;
+        a.isSmart = true;
         return  a;
     )::Agent
 end
@@ -169,11 +181,14 @@ mutable struct Simulation
     iter::Int
 
     simData::DataFrame
+    roadInfo::DataFrame
     simLog::Vector{String}
 
     maxAgents::Int
     maxIter::Int
     initialAgents::Int
+
+    lastAuctionTime::Real
 
     timeElapsed::Real
     isRunning::Bool
@@ -187,9 +202,10 @@ mutable struct Simulation
         s.timeStepVar = Vector{Real}();
         s.timeElapsed = 0;
         s.maxAgents = maxAgents;
-        s.initialAgents = floor(initialAgents / 2);
+        s.initialAgents = initialAgents;
         s.isRunning = run;
         s.maxIter = maxIter;
+        s.lastAuctionTime = 0.0;
         s.simData = DataFrame(  iter = Int[],
                                t = Real[],
                                agent = Int[],
@@ -198,10 +214,30 @@ mutable struct Simulation
                                roadPos = Real[],
                                posX = Real[],
                                posY = Real[],
+                               v = Real[],
                                t_est = Real[]
                                );
+        s.roadInfo = DataFrame( iter = Int[],
+                                bNode = Int[],
+                                fNode = Int[],
+                                len = Real[],
+                                k = Int[],
+                                k_max = Int[],
+                                v = Real[]
+                                );
         return s;)::Simulation
     Simulation() = new()
+end
+
+mutable struct Auction
+    particiapnts::Vector{Agent}
+    road::Road
+
+    Auction(particiapnts::Vector{Agent}, road::Road) = (
+        au = new();
+        au.particiapnts = particiapnts;
+        au.road = road;
+    return au)::Auction
 end
 
 function GetTimeStep(s::Simulation)::Real
@@ -329,18 +365,31 @@ function GetAgentByID(n::Network, id::Int)::Union{Agent,Nothing}
     return nothing
 end
 
-function GetIntersectionCoords(n::Network)::Vector{Tuple{Tuple{Real,Real},Tuple{Real,Real}}}
-    tups = (i -> (i.posX, i.posY)).(n.intersections)
+# function GetIntersectionCoords(n::Network)::Vector{Tuple{Tuple{Real,Real},Tuple{Real,Real}}}
+#     tups = (i -> (i.posX, i.posY)).(n.intersections)
+#
+#     return pts = [((tups[r.bNode][1], tups[r.bNode][2]), (tups[r.fNode][1], tups[r.fNode][2])) for r in n.roads]
+# end
 
-    return pts = [((tups[r.bNode][1], tups[r.bNode][2]), (tups[r.fNode][1], tups[r.fNode][2])) for r in n.roads]
-end
-
-function GetIntersectionCoords2(n::Network)::DataFrame
-    df = DataFrame(first_X = Real[], second_X = Real[], first_Y = Real[],  second_Y = Real[])
+function GetIntersectionCoords(n::Network)::DataFrame
+    df = DataFrame(first_X = Real[], first_Y = Real[], second_X = Real[], second_Y = Real[])
     for p in GetIntersectionCoords(n)
         push!(df, Dict( :first_X => p[1][1], :first_Y => p[1][2], :second_X => p[2][1], :second_Y => p[2][2]))
     end
     return df
+end
+
+function DumpRoadsInfo(s::Simulation)
+    for r in s.network.roads
+        push!(s.roadInfo, Dict( :iter => s.iter,
+                        :bNode => r.bNode,
+                        :fNode => r.fNode,
+                        :len => r.length,
+                        :k => length(r.agents),
+                        :k_max => r.capacity,
+                        :v => r.curVelocity
+                        ))
+    end
 end
 
 function GetNodesInRadius(n::Network, pt::Tuple{Real,Real}, r::Real)::Vector{Int}
@@ -367,25 +416,29 @@ function CanFitAtRoad(a::Agent, r::Road)::Bool
     return length(r.agents) < r.capacity #Check theres room on road for agent
 end
 
-function SetVelocityMpS!(r::Road) #Set Velocity function
-    r.curVelocity = min(lin_k_f_model(length(r.agents) * (avgCarLen + headway), r.length, r.vMax), r.vMax) / 3.6
+function RecalculateRoad!(r::Road) #Set Velocity function
+    r.curVelocity = min(lin_k_f_model(length(r.agents), r.capacity, r.vMax, r.vMin), r.vMax) # in meters per second!!!
     #Set the current velocity all cars are going on this road based on length, number of agents on the road (congestion), etc.
     r.ttime = r.length / r.curVelocity
+    r.MTS = (r.capacity * r.length * (r.vMax - r.vMin)) / ((r.vMin - r.vMax) * length(r.agents) + r.capacity * r.vMax) ^ 2
 end
 
-function SpawnAgents(s::Simulation, dt::Real, t::Real)
+function SpawnAgents(s::Simulation, dt::Real)
     if s.maxAgents == agentCntr
         return
     end
 
     λ = 5.0    #avg number of vehicles per second that appear
-    σ = 0.1    #standard deviation as a share of expected travel time
-    ϵ = 0.05   #starting time glut as a share of travel time
     k = minimum([maximum([rand(Distributions.Poisson(λ * dt)), 0]), s.maxAgents - agentCntr])
     for i in 1:k
         SpawnAgentAtRandom(s.network, s.timeElapsed)
-        dt = EstimateTime(s.network, s.network.agents[end].atNode.nodeID, s.network.agents[end].destNode.nodeID)
-        s.network.agents[end].requiredArrivalTime = rand(Distributions.Normal(s.timeElapsed + (1.0+ϵ) * dt, σ * dt))
+    end
+end
+
+function SpawnNumAgents(s::Simulation, num::Int)
+    num = min(num, s.maxAgents - agentCntr)
+    for i in 1:num
+        SpawnAgentAtRandom(s.network, s.timeElapsed)
     end
 end
 
@@ -400,7 +453,14 @@ function SpawnAgentAtRandom(n::Network, time::Real = 0.0)
         create_agent = IsRoutePossible(n,start,dest)
     end
 
-    push!(n.agents, Agent(n.intersections[start],n.intersections[dest],n.graph, time)) #Randomly spawn an agent within the outer region
+    σ = 0.1    #standard deviation as a share of expected travel time
+    ϵ = 0.05   #starting time glut as a share of travel time
+
+    dt = EstimateTime(n, start, dest)
+
+    arrivT = rand(Distributions.Normal(time + (1.0+ϵ) * dt, σ * dt))
+
+    push!(n.agents, Agent(n.intersections[start],n.intersections[dest],n.graph, time, arrivT)) #Randomly spawn an agent within the outer region
     AddRegistry("Agent #$(agentIDmax) has been created.") #Adds to registry that agent has been created
 end
 
@@ -433,6 +493,7 @@ function SetShortestPath!(a::Agent, s::Simulation)::Real #When would this return
                 nextNode = path[nextNode] #Get next road travelled in shortest path
                 push!(a.bestRoute, nextNode) #Add road to overall shortest path
             end
+            print("agent $(a.id), start $(a.atNode.nodeID), dest $(a.destNode.nodeID)")
             a.timeEstim = EstimateTime(s.network, a.atNode.nodeID, a.destNode.nodeID)
             return a.bestRouteCost = dist
         else
@@ -478,7 +539,7 @@ function EstimateTime(n::Network, start::Int, dest::Int)::Real
 
     if(pth.dists[start] == Inf)
         return Inf
-#        throw(ErrorException("Cannot find route between $(start) and $(dest)."))
+    #throw(ErrorException("Cannot find route between $(start) and $(dest)."))
     end
 
     ttot = 0.
@@ -497,6 +558,9 @@ function GetVoT(a::Agent, t::Real)::Real
     return a.VoT_base * exp(-a.VoT_dev * timeGlut)
 end
 
+function GetMR(a::Agent, r::Road, t::Real)::Real
+    return r.MTS * GetVoT(a, t)
+end
 
 function GetAgentLocation(a::Agent, n::Network)::Union{Tuple{Int,Int,Real}, Nothing}
     if (a.atNode != nothing)
@@ -523,10 +587,6 @@ function ReachedIntersection(a::Agent, s::Simulation) #Takes the agent and netwo
         else            #turn into a new road section
             # println("We are deleting the path between node $(a.atNode.nodeID) and $(a.bestRoute[1])")
             SetAlternatePath!(a,a.bestRoute[1],a.atNode.nodeID,a.destNode.nodeID)
-            if (length(a.alterRoute) != 0) && (length(a.bestRoute) >= 2)
-                GrabBuyersGoingDirection(n,a.atNode,a.bestRoute[1])
-                # CommenceBidding()
-            end
 
             nextRoad = GetRoadByNodes(n, a.atNode.nodeID, a.bestRoute[1]) #Get the road agent is turning on
 
@@ -564,10 +624,14 @@ function MakeAction!(a::Agent, sim::Simulation) #Takes an agent ID and simulatio
         end
     end
 
-    DumpInfo(a, sim) #Dump info into dataframe
+    if a.atNode != nothing
+        ReachedIntersection(a, sim)
+    end
+
+    DumpAgentsInfo(a, sim) #Dump info into dataframe
 end
 
-function DumpInfo(a::Agent, s::Simulation)
+function DumpAgentsInfo(a::Agent, s::Simulation)
     loc = GetAgentLocation(a, s.network)
     if loc == nothing
         return
@@ -585,6 +649,7 @@ function DumpInfo(a::Agent, s::Simulation)
                                 :roadPos => loc[3],
                                 :posX => x,
                                 :posY => y,
+                                :v => a.atRoad != nothing ? a.atRoad.curVelocity * 3.6 : 0.,
                                 :t_est => a.timeEstim,
                                 ))
     end
@@ -600,16 +665,29 @@ function RunSim(s::Simulation)::Bool
         AddRegistry("Iter #$(s.iter), time: $(s.timeElapsed), no. of agents: $(agentCntr), agents in total: $agentIDmax", true)
 
         for r in s.network.roads #For each road in the network, set the velocity of the road based on congestion, etc.
-            SetVelocityMpS!(r)
+            RecalculateRoad!(r)
         end
 
         #Spawn some number of agents
-        SpawnAgents(s, length(s.timeStepVar) == 0 ? 1.0 : s.timeStepVar[end], s.timeElapsed)
+        if s.iter > 1
+            SpawnAgents(s, GetTimeStep(s))
+        else
+            SpawnNumAgents(s, s.initialAgents)
+        end
 
         #For each agent in the network
         for a in s.network.agents
             MakeAction!(a, s) #Do action
         end
+
+        if  s.timeElapsed - s.lastAuctionTime >= auctionTimeInterval
+            s.lastAuctionTime = s.timeElapsed
+            for au in AuctionCandidates(s)
+                CommenceBidding(s, au)
+            end
+        end
+
+        DumpRoadsInfo(s)
 
         s.timeElapsed += SetTimeStep!(s)
 
@@ -622,8 +700,9 @@ function exp_k_f_model(k::Real, k_max::Real, v_max::Real)
     return v_max * exp(- k / k_max)
 end
 
-function lin_k_f_model(k::Real, k_max::Real, v_max::Real = 50.0, v_min::Real = 1.0)
-    return (v_max - v_min) * (1.0 - k / k_max) + v_min
+function lin_k_f_model(k::Int, k_max::Int, v_max::Real = 50.0, v_min::Real = 1.0)
+    v = (v_max - v_min) * (1.0 - k / k_max) + v_min
+    return  v > 0 ? v : throw(Exception("Velocity less than zero or not a number"))
 end
 
 function DistanceENU(p1::ENU, p2::ENU)
@@ -644,24 +723,38 @@ function IsRoutePossible(n::Network, startNode::Int64, endNode::Int64)
     end
 end
 
-function GrabBuyersGoingDirection(nw::Network, inter::Intersection, destNode::Int64)
-    buyers = Agent[]
-    for road in inter.inRoads
-        if length(road.agents) != 0
-            for a in road.agents
-                agent = GetAgentByID(nw, a)
-                if length(agent.bestRoute) >=2
-                    if agent.bestRoute[2] == destNode
-                        push!(buyers,agent)
-                    end
+function GrabAuctionParticiapants(nw::Network, r::Road)::Vector{Agent}
+    players = Agent[]
+    for road in nw.intersections[r.bNode].inRoads
+        for a in road.agents
+            agent = GetAgentByID(nw, a)
+            if length(agent.bestRoute) >=2
+                if agent.bestRoute[2] == r.fNode && agent.isSmart
+                    push!(players,agent)
                 end
             end
         end
     end
-    return buyers
+    return players
 end
 
-function CommenceBidding()
+function AuctionCandidates(s::Simulation)::Vector{Auction}
+    auctions = Vector{Auction}()
+    for r in s.network.roads
+        if length(r.agents) / r.capacity < auctionMinCongestion
+            continue
+        end
+        #if (length(a.alterRoute) != 0) && (length(a.bestRoute) >= 2)
+        particip = GrabAuctionParticiapants(s.network, r)
+        if length(particip) >= auctionMinParticipants
+            push!(auctions, Auction(particip, r))
+        end
+    end
+    println("$(length(auctions)) potential auctions.")
+    return auctions
+end
+
+function CommenceBidding(s::Simulation, auction::Auction)
     println("BID!")
 end
 
