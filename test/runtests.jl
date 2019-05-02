@@ -49,3 +49,5 @@ r = Decls.GetRoadByNodes(nw, 3743, 2700)
 Decls.GetMR(nw.agents[80], r, sim.timeElapsed)
 
 Decls.GetRoadByNodes(nw, 2768, 2769)
+
+ag1 = nw.agents[1]

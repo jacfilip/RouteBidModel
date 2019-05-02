@@ -460,7 +460,7 @@ function SpawnAgentAtRandom(n::Network, time::Real = 0.0)
     end
 
     σ = 0.1    #standard deviation as a share of expected travel time
-    ϵ = 0.15   #starting time glut as a share of travel time
+    ϵ = 0.1    #starting time glut as a share of travel time
 
     dt = EstimateTime(n, start, dest)
 
@@ -558,8 +558,8 @@ function EstimateTime(n::Network, start::Int, dest::Int)::Real
 end
 
 function GetVoT(a::Agent, t::Real)::Real
-    a.spareTime = (a.requiredArrivalTime - (t + a.timeEstim)) / a.timeEstim
-    return minimum([maximum([a.VoT_base - a.VoT_dev * a.spareTime, 0.3 * a.VoT_base]), 3 * a.VoT_base])
+    a.spareTime = (a.requiredArrivalTime - (t + a.timeEstim))
+    return minimum([maximum([a.VoT_base - a.VoT_dev * a.spareTime / a.timeEstim, 0.3 * a.VoT_base]), 3 * a.VoT_base])
 end
 
 function GetMR(a::Agent, r::Road, t::Real)::Real
@@ -577,33 +577,60 @@ function GetAgentLocation(a::Agent, n::Network)::Union{Tuple{Int,Int,Real}, Noth
 end
 
 function ReachedIntersection(a::Agent, s::Simulation) #Takes the agent and network
-  n = s.network
-  if a.atNode == a.destNode #If the the node the agent is at is their destination node
+    a.atNode = a.atRoad == nothing ? a.atNode : s.network.intersections[a.atRoad.fNode]
+    if a.atNode == a.destNode
         AddRegistry("Agent $(a.id) destroyed.") #Add to registry that agent has been destroyed
+        RemoveFromRoad!(a.atRoad, a)
         DestroyAgent(a, n) #Destroy the agent
-    else #Otherwise if the agent hasn't yet arrived at their destination
-        AddRegistry("Agent $(a.id) reached intersection $(a.atNode.nodeID)")
+    else
         SetWeights!(a, s) #Reset weight on edges for agent network
         if SetShortestPath!(a, s) == Inf
             println("Agent $(a.id) has a path of infinity. That's not good news!")
-
             return
-        else            #turn into a new road section
-            # println("We are deleting the path between node $(a.atNode.nodeID) and $(a.bestRoute[1])")
+        else
             SetAlternatePath!(a,a.bestRoute[1],a.atNode.nodeID,a.destNode.nodeID)
-
-            nextRoad = GetRoadByNodes(n, a.atNode.nodeID, a.bestRoute[1]) #Get the road agent is turning on
+            nextRoad = GetRoadByNodes(s.network, a.atNode.nodeID, a.bestRoute[1]) #Get the road agent is turning on
 
             if (CanFitAtRoad(a, nextRoad)) #Check that he fits on the road
+                if(a.atRoad != nothing)
+                    RemoveFromRoad!(a.atRoad, a)
+                end
                 push!(nextRoad.agents, a.id) #Add agents ID onto roads agents array
                 a.atRoad = nextRoad #Set agent on new road
                 a.roadPosition = 0.0 #Set his position on road to zero
                 a.atNode = nothing #Agent no longer at node
             else
-                #println("CANT FIT TO ROAD!!!! for agent $(a.id)\nThe road length $(nextRoad.length)\nThe road capacity $(nextRoad.capacity)\nThe number of agents currently on that road $(length(nextRoad.agents))\n")
+                println("CANT FIT TO ROAD!!!! for agent $(a.id)\nThe road length $(nextRoad.length)\nThe road capacity $(nextRoad.capacity)\nThe number of agents currently on that road $(length(nextRoad.agents))\n")
             end
         end
     end
+  # n = s.network
+  # if a.atNode == a.destNode #If the the node the agent is at is their destination node
+  #       AddRegistry("Agent $(a.id) destroyed.") #Add to registry that agent has been destroyed
+  #       DestroyAgent(a, n) #Destroy the agent
+  #   else #Otherwise if the agent hasn't yet arrived at their destination
+  #       AddRegistry("Agent $(a.id) reached intersection $(a.atNode.nodeID)")
+  #       SetWeights!(a, s) #Reset weight on edges for agent network
+  #       if SetShortestPath!(a, s) == Inf
+  #           println("Agent $(a.id) has a path of infinity. That's not good news!")
+  #
+  #           return
+  #       else            #turn into a new road section
+  #           # println("We are deleting the path between node $(a.atNode.nodeID) and $(a.bestRoute[1])")
+  #           SetAlternatePath!(a,a.bestRoute[1],a.atNode.nodeID,a.destNode.nodeID)
+  #
+  #           nextRoad = GetRoadByNodes(n, a.atNode.nodeID, a.bestRoute[1]) #Get the road agent is turning on
+  #
+  #           if (CanFitAtRoad(a, nextRoad)) #Check that he fits on the road
+  #               push!(nextRoad.agents, a.id) #Add agents ID onto roads agents array
+  #               a.atRoad = nextRoad #Set agent on new road
+  #               a.roadPosition = 0.0 #Set his position on road to zero
+  #               a.atNode = nothing #Agent no longer at node
+  #           else
+  #               #println("CANT FIT TO ROAD!!!! for agent $(a.id)\nThe road length $(nextRoad.length)\nThe road capacity $(nextRoad.capacity)\nThe number of agents currently on that road $(length(nextRoad.agents))\n")
+  #           end
+  #       end
+  #   end
 end
 
 function MakeAction!(a::Agent, sim::Simulation) #Takes an agent ID and simulation
@@ -611,21 +638,20 @@ function MakeAction!(a::Agent, sim::Simulation) #Takes an agent ID and simulatio
 
     if a.atNode != nothing
         ReachedIntersection(a, sim)
-    end
-
-    if a.atRoad != nothing
+    else
         a.roadPosition += a.atRoad.curVelocity * dt #The velocity of the road agent is currently on multiplied by the timestep
         a.roadPosition = min(a.roadPosition, a.atRoad.length) #Take the minimum value between the position they are on the road and the length of that road
         AddRegistry("Agent $(a.id) has travelled $(GetAgentLocation(a, sim.network)[3]) of $(a.atRoad.length) m from $(GetAgentLocation(a, sim.network)[1]) to $(GetAgentLocation(a, sim.network)[2]) at speed: $(a.atRoad.curVelocity*3.6)km/h")
         if a.roadPosition == a.atRoad.length #If their road position is at the end of the road
-            a.atNode = GetIntersectByNode(sim.network, a.atRoad.fNode) #Set the node I'm currently at
-            RemoveFromRoad!(a.atRoad, a) #Remove the agent from the road they were on
+            ReachedIntersection(a, sim)
+            # a.atNode = GetIntersectByNode(sim.network, a.atRoad.fNode) #Set the node I'm currently at
+            # RemoveFromRoad!(a.atRoad, a) #Remove the agent from the road they were on
         end
     end
 
-    if a.atNode != nothing
-        ReachedIntersection(a, sim)
-    end
+    # if a.atNode != nothing
+    #     ReachedIntersection(a, sim)
+    # end
 
     DumpAgentsInfo(a, sim) #Dump info into dataframe
 end
