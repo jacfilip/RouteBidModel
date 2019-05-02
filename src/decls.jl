@@ -29,8 +29,8 @@ headway = 0.5
 avgCarLen = 5.
 
 auctionTimeInterval = 20.0
-auctionMinCongestion = 0.1
-auctionMinParticipants = 10
+auctionMinCongestion = 0.0
+auctionMinParticipants = 15
 
 muteRegistering = false
 simLog = Vector{String}()
@@ -108,6 +108,7 @@ mutable struct Agent
     timeEstim::Real
     deployTime::Real
     requiredArrivalTime::Real
+    spareTime::Real
     reducedGraph::SimpleWeightedDiGraph
     #roadCosts::SparseArrays.SparseMatrixCSC{Float64,Int64}
     #roadBids::Vector{Tuple{Road, Real}}
@@ -132,7 +133,7 @@ mutable struct Agent
         a.id = agentIDmax;
         a.roadPosition = 0.0;
         a.VoT_base = maximum([rand(Distributions.Normal(24.52/60.0/60.0, 3.0/60.0/60.0)), 0.0]);
-        a.VoT_dev = rand() * 8.0;
+        a.VoT_dev =  1.0 / (rand() * 8.0 + 2.0);
         a.CoF = 0.15e-3;         #ToDo: Check and draw value
         a.carLength = 3.0;      #m ToDo: Draw value
         a.vMax = 120.0 / 3.6;         #m/s
@@ -145,6 +146,7 @@ mutable struct Agent
         a.requiredArrivalTime = arrivTime;
         a.bestRouteCost = 0.;
         a.alterRouteCost = 0.;
+        a.spareTime = 0.;
         a.isSmart = true;
         return  a;
     )::Agent
@@ -216,7 +218,10 @@ mutable struct Simulation
                                posX = Real[],
                                posY = Real[],
                                v = Real[],
-                               t_est = Real[]
+                               t_est = Real[],
+                               vot = Real[],
+                               spare_t = Real[],
+                               arrival = Real[]
                                );
         s.roadInfo = DataFrame( iter = Int[],
                                 bNode = Int[],
@@ -455,11 +460,11 @@ function SpawnAgentAtRandom(n::Network, time::Real = 0.0)
     end
 
     σ = 0.1    #standard deviation as a share of expected travel time
-    ϵ = 0.05   #starting time glut as a share of travel time
+    ϵ = 0.15   #starting time glut as a share of travel time
 
     dt = EstimateTime(n, start, dest)
 
-    arrivT = rand(Distributions.Normal(time + (1.0+ϵ) * dt, σ * dt))
+    arrivT = rand(Distributions.Normal(time + (1.0 + ϵ) * dt, σ * dt))
 
     push!(n.agents, Agent(n.intersections[start],n.intersections[dest],n.graph, time, arrivT)) #Randomly spawn an agent within the outer region
     AddRegistry("Agent #$(agentIDmax) has been created.") #Adds to registry that agent has been created
@@ -553,9 +558,8 @@ function EstimateTime(n::Network, start::Int, dest::Int)::Real
 end
 
 function GetVoT(a::Agent, t::Real)::Real
-    dt = (a.requiredArrivalTime - (t + a.timeEstim)) / a.requiredArrivalTime - 1.
-
-    return a.VoT_base - 0.1dt
+    a.spareTime = (a.requiredArrivalTime - (t + a.timeEstim)) / a.timeEstim
+    return minimum([maximum([a.VoT_base - a.VoT_dev * a.spareTime, 0.3 * a.VoT_base]), 3 * a.VoT_base])
 end
 
 function GetMR(a::Agent, r::Road, t::Real)::Real
@@ -637,15 +641,18 @@ function DumpAgentsInfo(a::Agent, s::Simulation)
         (x, y) = (bx + progress * (fx - bx), by + progress * (fy - by))
 
         push!(s.simData, Dict(  :iter => s.iter,
-                                :t => s.timeElapsed,
+                                :t => s.timeElapsed / 60,
+                                :t_est => a.timeEstim / 60,
+                                :arrival => a.requiredArrivalTime / 60,
                                 :agent => a.id,
                                 :node1 => loc[1],
                                 :node2 => loc[2],
                                 :roadPos => loc[3],
                                 :posX => x,
                                 :posY => y,
-                                :v => a.atRoad != nothing ? a.atRoad.curVelocity * 3.6 : 0.,
-                                :t_est => a.timeEstim,
+                                :v => a.atRoad != nothing ? a.atRoad.curVelocity * 3.6 : 0,
+                                :spare_t => a.spareTime / 60,
+                                :vot => GetVoT(a, s.timeElapsed) * 3600,
                                 ))
     end
 end
