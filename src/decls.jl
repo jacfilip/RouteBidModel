@@ -298,7 +298,7 @@ function InitNetwork!(n::Network, coords::Vector{Tuple{Float64,Float64,Float64}}
         for j in 1:n.graph.weights.n
             if n.graph.weights[i, j] != 0
                 r += 1
-                n.roads[r] = Road(i, j, n.graph.weights[i, j], 60.0)
+                n.roads[r] = Road(i, j, n.graph.weights[i, j], 50.0 / 3.6)
                 push!(n.intersections[i].outRoads, n.roads[r])
                 push!(n.intersections[j].inRoads, n.roads[r])
             end
@@ -493,7 +493,6 @@ function SetShortestPath!(a::Agent, s::Simulation)::Real #When would this return
                 nextNode = path[nextNode] #Get next road travelled in shortest path
                 push!(a.bestRoute, nextNode) #Add road to overall shortest path
             end
-            print("agent $(a.id), start $(a.atNode.nodeID), dest $(a.destNode.nodeID)")
             a.timeEstim = EstimateTime(s.network, a.atNode.nodeID, a.destNode.nodeID)
             return a.bestRouteCost = dist
         else
@@ -596,12 +595,7 @@ function ReachedIntersection(a::Agent, s::Simulation) #Takes the agent and netwo
                 a.roadPosition = 0.0 #Set his position on road to zero
                 a.atNode = nothing #Agent no longer at node
             else
-                println()
-                println("CANT FIT TO ROAD!!!! for agent $(a.id)")
-                println("The road length $(nextRoad.length)")
-                println("The road capacity $(nextRoad.capacity)")
-                println("The number of agents currently on that road $(length(nextRoad.agents))")
-
+                #println("CANT FIT TO ROAD!!!! for agent $(a.id)\nThe road length $(nextRoad.length)\nThe road capacity $(nextRoad.capacity)\nThe number of agents currently on that road $(length(nextRoad.agents))\n")
             end
         end
     end
@@ -700,7 +694,7 @@ function exp_k_f_model(k::Real, k_max::Real, v_max::Real)
     return v_max * exp(- k / k_max)
 end
 
-function lin_k_f_model(k::Int, k_max::Int, v_max::Real = 50.0, v_min::Real = 1.0)
+function lin_k_f_model(k::Int, k_max::Int, v_max::Real = 50.0 / 3.6, v_min::Real = 1.0 / 3.6)
     v = (v_max - v_min) * (1.0 - k / k_max) + v_min
     return  v > 0 ? v : throw(Exception("Velocity less than zero or not a number"))
 end

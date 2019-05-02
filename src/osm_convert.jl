@@ -19,9 +19,7 @@ function CreateNetworkFromFile(path::String, mapName::String)::Decls.Network
     return nw
 end
 
-#map = OpenStreetMapX.parseOSM(raw"C:\Users\jacek.filipowski\github\route-bid-model\maps\buffaloF.osm")
-#crop!(map)
-#mData = get_map_data(path, mapName, only_intersections = true)
 
-map = OpenStreetMapX.parseOSM("maps" * "\\" * "buffaloF.osm")
-mData = get_map_data("maps", "buffaloF.osm", only_intersections = true)
+# map = OpenStreetMapX.parseOSM("maps" * "\\" * "buffaloF.osm")
+# crop!(map)
+# mData = get_map_data("maps", "buffaloF.osm", only_intersections = true)
