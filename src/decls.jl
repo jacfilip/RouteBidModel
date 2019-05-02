@@ -30,7 +30,7 @@ avgCarLen = 5.
 
 auctionTimeInterval = 20.0
 auctionMinCongestion = 0.1
-auctionMinParticipants = 2
+auctionMinParticipants = 10
 
 muteRegistering = false
 simLog = Vector{String}()
@@ -131,11 +131,11 @@ mutable struct Agent
         global agentIDmax += 1;
         a.id = agentIDmax;
         a.roadPosition = 0.0;
-        a.VoT_base = maximum([rand(Distributions.Normal(24.52/60, 3.0/60)), 0.0]);
+        a.VoT_base = maximum([rand(Distributions.Normal(24.52/60.0/60.0, 3.0/60.0/60.0)), 0.0]);
         a.VoT_dev = rand() * 8.0;
         a.CoF = 0.15e-3;         #ToDo: Check and draw value
         a.carLength = 3.0;      #m ToDo: Draw value
-        a.vMax = 120.0 / 3.6;         #km/h
+        a.vMax = 120.0 / 3.6;         #m/s
         a.bestRoute = Vector{Int}();
         a.alterRoute = Vector{Int}();
         a.atRoad = nothing;
@@ -158,6 +158,7 @@ mutable struct Network
     numRoads::Int
     agents::Vector{Agent}
     graph::SimpleWeightedDiGraph
+    mapData::MapData
     Network(g::SimpleWeightedDiGraph, coords::Vector{Tuple{Float64,Float64,Float64}}) = (
             n = new();
             n.graph = deepcopy(g);
@@ -298,7 +299,7 @@ function InitNetwork!(n::Network, coords::Vector{Tuple{Float64,Float64,Float64}}
         for j in 1:n.graph.weights.n
             if n.graph.weights[i, j] != 0
                 r += 1
-                n.roads[r] = Road(i, j, n.graph.weights[i, j], 50.0 / 3.6)
+                n.roads[r] = Road(i, j, n.graph.weights[i, j], 50.0 / 3.6) #ToDo: take from osm
                 push!(n.intersections[i].outRoads, n.roads[r])
                 push!(n.intersections[j].inRoads, n.roads[r])
             end
@@ -387,7 +388,7 @@ function DumpRoadsInfo(s::Simulation)
                         :len => r.length,
                         :k => length(r.agents),
                         :k_max => r.capacity,
-                        :v => r.curVelocity
+                        :v => r.curVelocity * 3.6
                         ))
     end
 end
@@ -417,7 +418,7 @@ function CanFitAtRoad(a::Agent, r::Road)::Bool
 end
 
 function RecalculateRoad!(r::Road) #Set Velocity function
-    r.curVelocity = min(lin_k_f_model(length(r.agents), r.capacity, r.vMax, r.vMin), r.vMax) # in meters per second!!!
+    r.curVelocity = min(lin_k_f_model(length(r.agents), r.capacity, r.vMax, r.vMin), r.vMax)
     #Set the current velocity all cars are going on this road based on length, number of agents on the road (congestion), etc.
     r.ttime = r.length / r.curVelocity
     r.MTS = (r.capacity * r.length * (r.vMax - r.vMin)) / ((r.vMin - r.vMax) * length(r.agents) + r.capacity * r.vMax) ^ 2
@@ -552,9 +553,9 @@ function EstimateTime(n::Network, start::Int, dest::Int)::Real
 end
 
 function GetVoT(a::Agent, t::Real)::Real
-    timeGlut = a.requiredArrivalTime - (t + a.timeEstim)
+    dt = (a.requiredArrivalTime - (t + a.timeEstim)) / a.requiredArrivalTime - 1.
 
-    return a.VoT_base * exp(-a.VoT_dev * timeGlut)
+    return a.VoT_base - 0.1dt
 end
 
 function GetMR(a::Agent, r::Road, t::Real)::Real
@@ -611,7 +612,7 @@ function MakeAction!(a::Agent, sim::Simulation) #Takes an agent ID and simulatio
     if a.atRoad != nothing
         a.roadPosition += a.atRoad.curVelocity * dt #The velocity of the road agent is currently on multiplied by the timestep
         a.roadPosition = min(a.roadPosition, a.atRoad.length) #Take the minimum value between the position they are on the road and the length of that road
-        AddRegistry("Agent $(a.id) has travelled $(GetAgentLocation(a, sim.network)[3]) of $(a.atRoad.length) m from $(GetAgentLocation(a, sim.network)[1]) to $(GetAgentLocation(a, sim.network)[2]) at speed: $(a.atRoad.curVelocity)*3.6) km/h")
+        AddRegistry("Agent $(a.id) has travelled $(GetAgentLocation(a, sim.network)[3]) of $(a.atRoad.length) m from $(GetAgentLocation(a, sim.network)[1]) to $(GetAgentLocation(a, sim.network)[2]) at speed: $(a.atRoad.curVelocity*3.6)km/h")
         if a.roadPosition == a.atRoad.length #If their road position is at the end of the road
             a.atNode = GetIntersectByNode(sim.network, a.atRoad.fNode) #Set the node I'm currently at
             RemoveFromRoad!(a.atRoad, a) #Remove the agent from the road they were on
@@ -696,7 +697,7 @@ end
 
 function lin_k_f_model(k::Int, k_max::Int, v_max::Real = 50.0 / 3.6, v_min::Real = 1.0 / 3.6)
     v = (v_max - v_min) * (1.0 - k / k_max) + v_min
-    return  v > 0 ? v : throw(Exception("Velocity less than zero or not a number"))
+    return  v < 0 || v == NaN ? throw(Exception("Velocity less than zero or not a number")) : v
 end
 
 function DistanceENU(p1::ENU, p2::ENU)
