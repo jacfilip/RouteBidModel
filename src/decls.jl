@@ -881,9 +881,9 @@ function GraphAgents(path::String, file::String, agents::Array{Agent})
     for n = 1:min(length(agents),10)
         LL = GetLLOfRoute(agents[n].travelledRoute[1:end-1])
         info = "Agent # $(agents[n].id)\n<BR>"*
-                "Length: $(length(agents[n].bestRoute)) nodes\n<br>" *
-                "From: Node $(agents[n].bestRoute[1])\n<br>" *
-                "To: Node $(agents[n].bestRoute[end-1])"
+                "Length: $(length(agents[n].travelledRoute)) nodes\n<br>" *
+                "From: Node $(agents[n].travelledRoute[1])\n<br>" *
+                "To: Node $(agents[n].travelledRoute[end-1])\n<br>s" *
                 "Time Elapsed $(agents[n].arrivalTime)"
         flm.PolyLine(
                 LL,
