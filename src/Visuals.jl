@@ -1,58 +1,91 @@
 module Visuals
-
-using IJulia
+# using Pkg
+# Pkg.add("PyCall")
+# Pkg.add("Conda")
+# Pkg.add("OpenStreetMapX")
+# Conda.runconda(`install folium -c conda-forge`)
 using Conda
-using PyCall
 using OpenStreetMapX
+using PyCall
 
-include("./decls.jl")
-
-Conda.runconda(`install folium -c conda-forge`)
-
-flm = pyimport("folium")
-matplotlib_cm = pyimport("matplotlib.cm")
-matplotlib_colors = pyimport("matplotlib.colors")
-
-cmap = matplotlib_cm.get_cmap("prism")
-
-map = OpenStreetMapX.parseOSM(raw".\maps\buffaloF.osm")
-crop!(map)
-mx = get_map_data("maps", "buffaloF.osm", only_intersections = true, use_cache = false)
-
-node_ids = collect(keys(mx.nodes))
-routes = Vector{Vector{Int}}()
-visits = Dict{Int,Int}()
-for i in 1:50
-    a,b = [point_to_nodes(generate_point_in_bounds(mx), mx) for i in 1:2]
-    route, route_time = OpenStreetMapX.shortest_route(mx,a,b)
-    if route_time < Inf # when we select points neaer edges no route might be found
-        push!(routes, route)
-        for n in route
-            visits[n] = get(visits, n,0)+1
-        end
+function GetLLOfRoute(map::OpenStreetMapX.OSMData, mData::MapData,route::Array{Int64})
+    myroute = []
+    for nodeID in route
+        latitude = map.nodes[mData.n[nodeID]].lat
+        longitude = map.nodes[mData.n[nodeID]].lon
+        push!(myroute,(latitude,longitude))
     end
+    return myroute
 end
 
-SHOW_PATHS=20
-m = flm.Map()
-for k=1:SHOW_PATHS
-    locs = [LLA(mx.nodes[n],mx.bounds) for n in routes[k]]
-    info = "Sample route number $k\n<BR>"*
-        "Length: $(length(routes[k])) nodes\n<br>" *
-        "From: $(routes[k][1]) $(round.((locs[1].lat, locs[1].lon),digits=4))\n<br>" *
-        "To: $(routes[k][end]) $(round.((locs[end].lat, locs[end].lon),digits=4))"
+function OVAGraph(map::OpenStreetMapX.OSMData, mData::MapData, a::Main.Decls.Agent)
+
+    flm = pyimport("folium")
+    matplotlib_cm = pyimport("matplotlib.cm")
+    matplotlib_colors = pyimport("matplotlib.colors")
+    cmap = matplotlib_cm.get_cmap("prism")
+    m = flm.Map()
+
+    o_LL = GetLLOfRoute(map,mData,a.origRoute[1:end-1])
+    t_LL = GetLLOfRoute(map,mData,a.travelledRoute[1:end])
+
+    o_info = "Agent # $(a.id)\n<BR>"*
+            "Length: $(length(a.origRoute)) nodes\n<br>" *
+            "From: Node $(a.origRoute[1])\n<br>" *
+            "To: Node $(a.origRoute[end-1])"
+    t_info = "Agent $(a.id)\n<BR>"*
+            "Length: $(length(a.travelledRoute)) nodes\n<br>" *
+            "From: Node $(a.travelledRoute[1])\n<br>" *
+            "To: Node $(a.travelledRoute[end])"
+
     flm.PolyLine(
-        [(loc.lat, loc.lon) for loc in locs ],
-        popup=info,
-        tooltip=info,
-        color=matplotlib_colors.to_hex(cmap(k/SHOW_PATHS))
-    ).add_to(m)
+            o_LL,
+            popup=o_info,
+            tooltip=o_info,
+            color=matplotlib_colors.to_hex(cmap(1))
+        ).add_to(m)
+    flm.PolyLine(
+            t_LL,
+            popup=t_info,
+            tooltip=t_info,
+            color=matplotlib_colors.to_hex(cmap(2))
+        ).add_to(m)
+
+    MAP_BOUNDS = [(mData.bounds.min_y,mData.bounds.min_x),(mData.bounds.max_y,mData.bounds.max_x)]
+    flm.Rectangle(MAP_BOUNDS, color="black",weight=6).add_to(m)
+    m.fit_bounds(MAP_BOUNDS)
+    m.save("/Users/arashdehghan/Desktop/RouteBidModel/results/OVAGraph.html")
+    println("File Saved!")
 end
 
-MAP_BOUNDS = [(mx.bounds.min_y,mx.bounds.min_x),(mx.bounds.max_y,mx.bounds.max_x)]
-flm.Rectangle(MAP_BOUNDS, color="black",weight=6).add_to(m)
-m.fit_bounds(MAP_BOUNDS)
+function GraphAgents(map::OpenStreetMapX.OSMData, mData::MapData, agents::Array{Main.Decls.Agent})
 
-notebook()
+    flm = pyimport("folium")
+    matplotlib_cm = pyimport("matplotlib.cm")
+    matplotlib_colors = pyimport("matplotlib.colors")
+    cmap = matplotlib_cm.get_cmap("prism")
+    m = flm.Map()
 
-end  #module
+    for n = 1:min(length(agents),10)
+        LL = GetLLOfRoute(map,mData,agents[n].travelledRoute[1:end-1])
+        info = "Agent # $(agents[n].id)\n<BR>"*
+                "Length: $(length(agents[n].travelledRoute)) nodes\n<br>" *
+                "From: Node $(agents[n].travelledRoute[1])\n<br>" *
+                "To: Node $(agents[n].travelledRoute[end-1])\n<br>" *
+                "Time Elapsed $(agents[n].arrivalTime)"
+        flm.PolyLine(
+                LL,
+                popup=info,
+                tooltip=info,
+                color=matplotlib_colors.to_hex(cmap(n/min(length(agents),10)))
+            ).add_to(m)
+    end
+
+    MAP_BOUNDS = [(mData.bounds.min_y,mData.bounds.min_x),(mData.bounds.max_y,mData.bounds.max_x)]
+    flm.Rectangle(MAP_BOUNDS, color="black",weight=6).add_to(m)
+    m.fit_bounds(MAP_BOUNDS)
+    m.save("/Users/arashdehghan/Desktop/RouteBidModel/results/AgentsGraph.html")
+    println("File Saved!")
+end
+
+end
