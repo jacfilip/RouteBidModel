@@ -54,7 +54,7 @@ function OVAGraph(map::OpenStreetMapX.OSMData, mData::MapData, a::Main.Decls.Age
     MAP_BOUNDS = [(mData.bounds.min_y,mData.bounds.min_x),(mData.bounds.max_y,mData.bounds.max_x)]
     flm.Rectangle(MAP_BOUNDS, color="black",weight=6).add_to(m)
     m.fit_bounds(MAP_BOUNDS)
-    m.save("/Users/arashdehghan/Desktop/RouteBidModel/results/OVAGraph.html")
+    m.save("OVAGraph.html")
     println("File Saved!")
 end
 
@@ -84,7 +84,7 @@ function GraphAgents(map::OpenStreetMapX.OSMData, mData::MapData, agents::Array{
     MAP_BOUNDS = [(mData.bounds.min_y,mData.bounds.min_x),(mData.bounds.max_y,mData.bounds.max_x)]
     flm.Rectangle(MAP_BOUNDS, color="black",weight=6).add_to(m)
     m.fit_bounds(MAP_BOUNDS)
-    m.save("/Users/arashdehghan/Desktop/RouteBidModel/results/AgentsGraph.html")
+    m.save("AgentsGraph.html")
     println("File Saved!")
 end
 
