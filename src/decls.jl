@@ -5,6 +5,8 @@ using OpenStreetMapX
 using Compose
 using DataFrames
 using Distributions
+using Conda
+using PyCall
 
 export Network
 export Simulation
@@ -34,6 +36,9 @@ auctionMinParticipants = 15
 
 muteRegistering = false
 simLog = Vector{String}()
+
+path = "/Users/arashdehghan/Desktop/RouteBidModel/maps/"
+file = "buffaloF.osm"
 
 function AddRegistry(msg::String, prompt::Bool = false)
     if muteRegistering return end
@@ -105,9 +110,12 @@ mutable struct Agent
     destNode::Intersection
     bestRoute::Vector{Int}
     alterRoute::Vector{Int}
+    origRoute::Vector{Int}
+    travelledRoute::Vector{Int}
     timeEstim::Real
     deployTime::Real
     requiredArrivalTime::Real
+    arrivalTime::Real
     spareTime::Real
     reducedGraph::SimpleWeightedDiGraph
     #roadCosts::SparseArrays.SparseMatrixCSC{Float64,Int64}
@@ -139,11 +147,15 @@ mutable struct Agent
         a.vMax = 120.0 / 3.6;         #m/s
         a.bestRoute = Vector{Int}();
         a.alterRoute = Vector{Int}();
+        a.origRoute = Vector{Int}();
+        a.travelledRoute = Vector{Int}();
         a.atRoad = nothing;
         a.BorS = rand(Categorical([0.5,0.5]),1)[1];
         a.deployTime = deployTime;
         a.timeEstim = 0.;
         a.requiredArrivalTime = arrivTime;
+        a.arrivalTime = 0.;
+
         a.bestRouteCost = 0.;
         a.alterRouteCost = 0.;
         a.spareTime = 0.;
@@ -190,6 +202,9 @@ mutable struct Simulation
     maxAgents::Int
     maxIter::Int
     initialAgents::Int
+    agentsFinished::Vector{Agent}
+
+    lastAuctionTime::Real
 
     lastAuctionTime::Real
 
@@ -198,6 +213,7 @@ mutable struct Simulation
     Simulation(n::Network, tmax::Real; dt::Real = 0, dt_min = 1.0, maxAgents::Int = bigNum, maxIter::Int = bigNum, run::Bool = true, initialAgents::Int = 200) = (
         s = Simulation();
         s.network = n;
+        s.agentsFinished = Vector{Agent}();
         s.iter = 0;
         s.timeMax = tmax;
         s.timeStep = dt;
@@ -577,17 +593,37 @@ function GetAgentLocation(a::Agent, n::Network)::Union{Tuple{Int,Int,Real}, Noth
 end
 
 function ReachedIntersection(a::Agent, s::Simulation) #Takes the agent and network
+    global list_of_finished_agents
+
     a.atNode = a.atRoad == nothing ? a.atNode : s.network.intersections[a.atRoad.fNode]
     if a.atNode == a.destNode
         AddRegistry("Agent $(a.id) destroyed.") #Add to registry that agent has been destroyed
         RemoveFromRoad!(a.atRoad, a)
-        DestroyAgent(a, n) #Destroy the agent
+
+        push!(a.travelledRoute,a.atNode.nodeID)
+        push!(s.agentsFinished,a)
+        a.arrivalTime = s.timeElapsed
+        DestroyAgent(a, s.network) #Destroy the agent
     else
+        if isempty(a.travelledRoute)
+            push!(a.travelledRoute,a.atNode.nodeID)
+        else
+            if a.travelledRoute[end] != a.atNode.nodeID
+                push!(a.travelledRoute,a.atNode.nodeID)
+            end
+        end
         SetWeights!(a, s) #Reset weight on edges for agent network
         if SetShortestPath!(a, s) == Inf
             println("Agent $(a.id) has a path of infinity. That's not good news!")
             return
         else
+
+            if isempty(a.origRoute)
+                cop = deepcopy(a.bestRoute)
+                oroute = pushfirst!(cop,a.atNode.nodeID)
+                a.origRoute = oroute
+            end
+
             SetAlternatePath!(a,a.bestRoute[1],a.atNode.nodeID,a.destNode.nodeID)
             nextRoad = GetRoadByNodes(s.network, a.atNode.nodeID, a.bestRoute[1]) #Get the road agent is turning on
 
@@ -684,7 +720,7 @@ function DumpAgentsInfo(a::Agent, s::Simulation)
 end
 
 function RunSim(s::Simulation)::Bool
-    global once
+    global once, list_of_finished_agents
     if !s.isRunning
         return false
     end
@@ -721,6 +757,8 @@ function RunSim(s::Simulation)::Bool
 
         if s.iter > s.maxIter return false end
     end
+    # OVAGraph("/Users/arashdehghan/Desktop/RouteBidModel/maps/","buffaloF.osm",s.agentsFinished[1])
+    # GraphAgents("/Users/arashdehghan/Desktop/RouteBidModel/maps/","buffaloF.osm",s.agentsFinished)
     return true
 end
 

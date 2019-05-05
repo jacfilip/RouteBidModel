@@ -24,15 +24,21 @@ using CSV
 using DelimitedFiles
 using SparseArrays
 using Random
+using Conda
+using PyCall
 
 include("../src/decls.jl")
-include("../src/Visuals.jl")
 include("../src/osm_convert.jl")
+include("../src/Visuals.jl")
 
 Random.seed!(0)
 
-nw = CreateNetworkFromFile("maps", "buffaloF.osm")
+path = "/Users/arashdehghan/Desktop/RouteBidModel/maps/"
+file = "buffaloF.osm"
+
+nw = CreateNetworkFromFile(path, file)
 Decls.SetSpawnAndDestPts!(nw, Decls.GetNodesOutsideRadius(nw,(-2000.,-2000.),4000.), Decls.GetNodesInRadius(nw,(-2000.,-2000.),2000.))
+
 
 sim = Decls.Simulation(nw, 105.0, maxAgents = 1000, dt = 5.0)
 
