@@ -155,6 +155,7 @@ mutable struct Agent
         a.timeEstim = 0.;
         a.requiredArrivalTime = arrivTime;
         a.arrivalTime = 0.;
+
         a.bestRouteCost = 0.;
         a.alterRouteCost = 0.;
         a.spareTime = 0.;
@@ -202,6 +203,8 @@ mutable struct Simulation
     maxIter::Int
     initialAgents::Int
     agentsFinished::Vector{Agent}
+
+    lastAuctionTime::Real
 
     lastAuctionTime::Real
 
@@ -591,10 +594,12 @@ end
 
 function ReachedIntersection(a::Agent, s::Simulation) #Takes the agent and network
     global list_of_finished_agents
+
     a.atNode = a.atRoad == nothing ? a.atNode : s.network.intersections[a.atRoad.fNode]
     if a.atNode == a.destNode
         AddRegistry("Agent $(a.id) destroyed.") #Add to registry that agent has been destroyed
         RemoveFromRoad!(a.atRoad, a)
+
         push!(a.travelledRoute,a.atNode.nodeID)
         push!(s.agentsFinished,a)
         a.arrivalTime = s.timeElapsed
@@ -612,11 +617,13 @@ function ReachedIntersection(a::Agent, s::Simulation) #Takes the agent and netwo
             println("Agent $(a.id) has a path of infinity. That's not good news!")
             return
         else
+
             if isempty(a.origRoute)
                 cop = deepcopy(a.bestRoute)
                 oroute = pushfirst!(cop,a.atNode.nodeID)
                 a.origRoute = oroute
             end
+
             SetAlternatePath!(a,a.bestRoute[1],a.atNode.nodeID,a.destNode.nodeID)
             nextRoad = GetRoadByNodes(s.network, a.atNode.nodeID, a.bestRoute[1]) #Get the road agent is turning on
 

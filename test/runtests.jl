@@ -39,18 +39,21 @@ file = "buffaloF.osm"
 nw = CreateNetworkFromFile(path, file)
 Decls.SetSpawnAndDestPts!(nw, Decls.GetNodesOutsideRadius(nw,(-2000.,-2000.),4000.), Decls.GetNodesInRadius(nw,(-2000.,-2000.),2000.))
 
-sim = Decls.Simulation(nw, 300.0, maxAgents = 100, dt = 5.0)
+
+sim = Decls.Simulation(nw, 105.0, maxAgents = 1000, dt = 5.0)
 
 @time Decls.RunSim(sim)
 
-map = OpenStreetMapX.parseOSM(path * file)
-mData = get_map_data(path,file,only_intersections = true)
+CSV.write(raw".\results\history.csv", sim.simData)
+CSV.write(raw".\results\roadInfo.csv", sim.roadInfo)
+CSV.write(raw".\results\coords.csv", Decls.GetIntersectionCoords(sim.network))
+writedlm(raw".\results\log.txt", Decls.simLog, "\n")
 
-Visuals.OVAGraph(map,mData,sim.agentsFinished[1])
-Visuals.GraphAgents(map,mData,sim.agentsFinished)
+#test czy alter route cost > best route cost
 
+r = Decls.GetRoadByNodes(nw, 3743, 2700)
+Decls.GetMR(nw.agents[80], r, sim.timeElapsed)
 
-CSV.write("/Users/arashdehghan/Desktop/RouteBidModel/results/history.csv", sim.simData)
-CSV.write("/Users/arashdehghan/Desktop/RouteBidModel/results/roadInfo.csv", sim.roadInfo)
-CSV.write("/Users/arashdehghan/Desktop/RouteBidModel/results/coords.csv", Decls.GetIntersectionCoords(sim.network))
-writedlm("/Users/arashdehghan/Desktop/RouteBidModel/results/log.txt", Decls.simLog, "\n")
+Decls.GetRoadByNodes(nw, 2768, 2769)
+
+ag1 = nw.agents[1]

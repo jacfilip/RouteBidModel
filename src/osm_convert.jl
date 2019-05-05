@@ -14,3 +14,9 @@ function CreateNetworkFromFile(path::String, mapName::String)::Decls.Network
     nw = Decls.Network(mData)
     return nw
 end
+
+
+# map = OpenStreetMapX.parseOSM("maps" * "\\" * "buffaloF.osm")
+# crop!(map)
+# mData = get_map_data("maps", "buffaloF.osm", only_intersections = true)
+
