@@ -37,7 +37,7 @@ auctionMinParticipants = 15
 muteRegistering = false
 simLog = Vector{String}()
 
-path = "/Users/arashdehghan/Desktop/RouteBidModel/maps/"
+path = "maps"
 file = "buffaloF.osm"
 
 function AddRegistry(msg::String, prompt::Bool = false)
@@ -203,8 +203,6 @@ mutable struct Simulation
     maxIter::Int
     initialAgents::Int
     agentsFinished::Vector{Agent}
-
-    lastAuctionTime::Real
 
     lastAuctionTime::Real
 
