@@ -32,7 +32,7 @@ avgCarLen = 5.
 
 auctionTimeInterval = 20.0
 auctionMinCongestion = 0.0
-auctionMinParticipants = 15
+auctionMinParticipants = 5
 
 muteRegistering = false
 simLog = Vector{String}()
@@ -187,6 +187,21 @@ mutable struct Network
     Network(map::MapData) = (return  ConvertToNetwork(map))::Network
 end
 
+mutable struct Auction
+    participants::Vector{Agent}
+    road::Road
+    MRs::Dict{Int, Real}
+    saleBids::Dict{Int, Real}
+
+    Auction(participants::Vector{Agent}, road::Road) = (
+        au = new();
+        au.participants = participants;
+        au.road = road;
+        au.MRs = Dict{Int, Real}();
+        au.saleBids = Dict{Int, Real}();
+    return au)::Auction
+end
+
 mutable struct Simulation
     network::Network
     timeMax::Real
@@ -204,6 +219,7 @@ mutable struct Simulation
     initialAgents::Int
     agentsFinished::Vector{Agent}
 
+    auctions::Vector{Auction}
     lastAuctionTime::Real
 
     timeElapsed::Real
@@ -223,6 +239,7 @@ mutable struct Simulation
         s.isRunning = run;
         s.maxIter = maxIter;
         s.lastAuctionTime = 0.0;
+        s.auctions = Vector{Auction}();
         s.simData = DataFrame(  iter = Int[],
                                t = Real[],
                                agent = Int[],
@@ -247,17 +264,6 @@ mutable struct Simulation
                                 );
         return s;)::Simulation
     Simulation() = new()
-end
-
-mutable struct Auction
-    particiapnts::Vector{Agent}
-    road::Road
-
-    Auction(particiapnts::Vector{Agent}, road::Road) = (
-        au = new();
-        au.particiapnts = particiapnts;
-        au.road = road;
-    return au)::Auction
 end
 
 function GetTimeStep(s::Simulation)::Real
@@ -534,9 +540,7 @@ function SetAlternatePath!(a::Agent, delNode::Int, bNode::Int, fNode::Int)::Real
             empty!(a.alterRoute)
             while nextNode != 0
                 nextNode = path[nextNode]
-                if nextNode != 0
-                    push!(a.alterRoute, nextNode)
-                end
+                push!(a.alterRoute, nextNode)
             end
             a.reducedGraph.weights[bNode,delNode] = oVal
             return a.alterRouteCost = dist
@@ -634,7 +638,7 @@ function ReachedIntersection(a::Agent, s::Simulation) #Takes the agent and netwo
                 a.roadPosition = 0.0 #Set his position on road to zero
                 a.atNode = nothing #Agent no longer at node
             else
-                println("CANT FIT TO ROAD!!!! for agent $(a.id)\nThe road length $(nextRoad.length)\nThe road capacity $(nextRoad.capacity)\nThe number of agents currently on that road $(length(nextRoad.agents))\n")
+                #println("CANT FIT TO ROAD!!!! for agent $(a.id)\nThe road length $(nextRoad.length)\nThe road capacity $(nextRoad.capacity)\nThe number of agents currently on that road $(length(nextRoad.agents))\n")
             end
         end
     end
@@ -719,10 +723,11 @@ end
 
 function RunSim(s::Simulation)::Bool
     global once, list_of_finished_agents
-    if !s.isRunning
-        return false
-    end
+
     while s.timeElapsed < s.timeMax
+        if !s.isRunning
+            return false
+        end
         s.iter += 1 #Add new number of iteration
         AddRegistry("Iter #$(s.iter), time: $(s.timeElapsed), no. of agents: $(agentCntr), agents in total: $agentIDmax", true)
 
@@ -811,7 +816,9 @@ function AuctionCandidates(s::Simulation)::Vector{Auction}
         #if (length(a.alterRoute) != 0) && (length(a.bestRoute) >= 2)
         particip = GrabAuctionParticiapants(s.network, r)
         if length(particip) >= auctionMinParticipants
-            push!(auctions, Auction(particip, r))
+            au = Auction(particip, r)
+            push!(auctions, au)
+            push!(s.auctions, au)
         end
     end
     println("$(length(auctions)) potential auctions.")
@@ -819,8 +826,20 @@ function AuctionCandidates(s::Simulation)::Vector{Auction}
 end
 
 function CommenceBidding(s::Simulation, auction::Auction)
-    println("BID!")
+    StackModelAuction(s, auction)
 end
 
+function StackModelAuction(s::Simulation, au::Auction)
+    au.MRs = Dict([(a.id, GetMR(a, au.road, s.timeElapsed)) for a in au.participants])
+    MRsOrd = sort(collect(au.MRs), by = x -> x[2])
+
+    au.saleBids = Dict([(a.id, (a.alterRouteCost - a.bestRouteCost)) for a in au.participants])
+    saleBidsOrd = sort(collect(au.saleBids), by = x -> x[2])
+
+    print(MRsOrd)
+    print(saleBidsOrd)
+
+    s.isRunning = false
+end
 
 end  # module  Decls
