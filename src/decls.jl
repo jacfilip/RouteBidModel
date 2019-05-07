@@ -33,6 +33,7 @@ avgCarLen = 5.
 auctionTimeInterval = 20.0
 auctionMinCongestion = 0.0
 auctionMinParticipants = 5
+auctionCntr = 0
 
 muteRegistering = false
 simLog = Vector{String}()
@@ -188,17 +189,28 @@ mutable struct Network
 end
 
 mutable struct Auction
+    auctionID::Int
     participants::Vector{Agent}
     road::Road
-    MRs::Dict{Int, Real}
-    saleBids::Dict{Int, Real}
+    MRs::Vector{Dict{Int, Real}}
+    sBids::Vector{Dict{Int, Real}}
+    bBids::Vector{Dict{Int,Real}}
+    rounds::Int
+    time::Real
 
-    Auction(participants::Vector{Agent}, road::Road) = (
+    Auction(participants::Vector{Agent}, road::Road, time::Real) = (
         au = new();
         au.participants = participants;
         au.road = road;
-        au.MRs = Dict{Int, Real}();
-        au.saleBids = Dict{Int, Real}();
+        #au.MRs = Dict{Int, Real}();
+        #au.sBids = Dict{Int, Real}();
+        global auctionCntr += 1;
+        au.auctionID = auctionCntr;
+        au.rounds = 0;
+        au.time = time;
+        au.MRs = Vector{Dict{Int, Real}}();
+        au.sBids = Vector{Dict{Int, Real}}();
+        au.bBids = Vector{Dict{Int, Real}}();
     return au)::Auction
 end
 
@@ -546,6 +558,7 @@ function SetAlternatePath!(a::Agent, delNode::Int, bNode::Int, fNode::Int)::Real
             return a.alterRouteCost = dist
         else
             a.reducedGraph.weights[bNode,delNode] = oVal
+            #AddRegistry("Agent $(a.id) could not find an alterante path at node $(a.atNode.nodeID)", true)
             return Inf
         end
     end
@@ -721,6 +734,28 @@ function DumpAgentsInfo(a::Agent, s::Simulation)
     end
 end
 
+function DumpIntersectionsInfo(nw::Network, map::OpenStreetMapX.OSMData, mData::MapData)::DataFrame
+    df = DataFrame( id = Int[],
+                    posX = Real[],
+                    posY = Real[],
+            #        lat = Real[],
+            #        lon = Real[],
+                    ingoing = String[],
+                    outgoing = String[]
+                    )
+    for i in nw.intersections
+        push!(df, Dict( :id => i.nodeID,
+                        :posX => i.posX,
+                        :posY => i.posY,
+                    #    :lat => map.nodes[mData.n[i.nodeID]].lat,
+                    #    :lon => map.nodes[mData.n[i.nodeID]].lon,
+                        :ingoing => string([r.bNode for r in i.inRoads]),
+                        :outgoing => string([r.fNode for r in i.outRoads])
+        ))
+    end
+    return df
+end
+
 function RunSim(s::Simulation)::Bool
     global once, list_of_finished_agents
 
@@ -749,7 +784,7 @@ function RunSim(s::Simulation)::Bool
 
         if  s.timeElapsed - s.lastAuctionTime >= auctionTimeInterval
             s.lastAuctionTime = s.timeElapsed
-            for au in AuctionCandidates(s)
+            for au in GrabAuctionPlaces(s)
                 CommenceBidding(s, au)
             end
         end
@@ -792,7 +827,7 @@ function IsRoutePossible(n::Network, startNode::Int64, endNode::Int64)
     end
 end
 
-function GrabAuctionParticiapants(nw::Network, r::Road)::Vector{Agent}
+function GrabAuctionParticipants(nw::Network, r::Road)::Vector{Agent}
     players = Agent[]
     for road in nw.intersections[r.bNode].inRoads
         for a in road.agents
@@ -807,39 +842,82 @@ function GrabAuctionParticiapants(nw::Network, r::Road)::Vector{Agent}
     return players
 end
 
-function AuctionCandidates(s::Simulation)::Vector{Auction}
+function GrabAuctionPlaces(s::Simulation)::Vector{Auction}
     auctions = Vector{Auction}()
     for r in s.network.roads
-        if length(r.agents) / r.capacity < auctionMinCongestion
+        if ( length(r.agents) / r.capacity < auctionMinCongestion ||
+             length(s.network.intersections[r.bNode].inRoads) < 2)
             continue
         end
         #if (length(a.alterRoute) != 0) && (length(a.bestRoute) >= 2)
-        particip = GrabAuctionParticiapants(s.network, r)
+        particip = GrabAuctionParticipants(s.network, r)
         if length(particip) >= auctionMinParticipants
-            au = Auction(particip, r)
+            au = Auction(particip, r, s.timeElapsed)
             push!(auctions, au)
             push!(s.auctions, au)
         end
     end
-    println("$(length(auctions)) potential auctions.")
     return auctions
 end
 
 function CommenceBidding(s::Simulation, auction::Auction)
-    StackModelAuction(s, auction)
+    StackModelAuction(auction)
 end
 
-function StackModelAuction(s::Simulation, au::Auction)
-    au.MRs = Dict([(a.id, GetMR(a, au.road, s.timeElapsed)) for a in au.participants])
-    MRsOrd = sort(collect(au.MRs), by = x -> x[2])
+function StackModelAuction(au::Auction)
+    au.rounds = 1
+    while true
+        push!(au.MRs, Dict([(a.id, GetMR(a, au.road, au.time)) for a in au.participants]))
+        push!(au.sBids, Dict([(a.id, (a.alterRouteCost - a.bestRouteCost)) for a in au.participants[getfield.(au.participants, :alterRouteCost) .> getfield.(au.participants, :bestRouteCost)]]))
 
-    au.saleBids = Dict([(a.id, (a.alterRouteCost - a.bestRouteCost)) for a in au.participants])
-    saleBidsOrd = sort(collect(au.saleBids), by = x -> x[2])
+        MRsOrd = sort(collect(au.MRs[au.rounds]), by = x -> x[2])
+        sBidsOrd = sort(collect(au.sBids[au.rounds]), by = x -> x[2])
 
-    print(MRsOrd)
-    print(saleBidsOrd)
+        if length(MRsOrd) < 2 || length(sBidsOrd) < 1
+            return
+        end
 
-    s.isRunning = false
+        minS = sBidsOrd[au.rounds][2]                       #lowest sale offer
+
+        for i in 1:au.rounds
+            filter!(x -> x[1] != sBidsOrd[i][1], MRsOrd)   #delete buyer with the lowest sale offer as he will be bought out in the first place
+        end
+        N = length(MRsOrd)
+
+        ΔMRs = [i == 1 ? MRsOrd[1][2] : MRsOrd[i][2] - MRsOrd[i-1][2] for i in 1:N]
+
+        tot = 0
+        k1 = 0
+        α = 0.0
+        for k in 1:N
+            tot += ΔMRs[k] * (N - k + 1)
+            if tot >= minS
+                k1 = k
+                break
+            end
+        end
+        if k1 == 0
+            AddRegistry("No more buy-offs possible! Auction $(au.auctionID) stopped at round $(au.rounds) with $(length(au.participants)) particiapnts.", true)
+            AddRegistry("Auction $(au.auctionID) round $(au.rounds): total buyers' bid $(tot), lowest sale bid: $(minS) exceeded by $(100*(minS/tot-1))%", true)
+            break
+        else
+            last = ΔMRs[k1] * (N - k1 + 1)
+            tot_minus_last = tot - last
+            α = (minS - tot_minus_last) / last
+            println("α: $(α)")
+
+            maxOff = (k1 == 1 ? 0 : MRsOrd[k1 - 1][2]) + α * MRsOrd[k1][2]
+            push!(au.bBids, Dict([(MRsOrd[i][1], minimum([MRsOrd[i][2], maxOff])) for i in length(MRsOrd)]))
+
+            println("Auction $(au.auctionID) round $(au.rounds): maximal offer $(maxOff) submitted by $(N - k1 + 1) buyer(s).")
+        end
+
+        au.rounds += 1
+        if au.rounds > N
+            AddRegistry("Oops! Something's wrong with your while loop at auction $(au.auctionID).", true)
+            break
+        end
+    end
 end
 
 end  # module  Decls
