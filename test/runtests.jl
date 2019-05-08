@@ -39,7 +39,7 @@ file = "buffaloF.osm"
 nw = CreateNetworkFromFile(path, file)
 Decls.SetSpawnAndDestPts!(nw, Decls.GetNodesOutsideRadius(nw,(-2000.,-2000.),4000.), Decls.GetNodesInRadius(nw,(-2000.,-2000.),2000.))
 
-sim = Decls.Simulation(nw, 105.0, maxAgents = 1000, dt = 10.0, initialAgents = 500)
+sim = Decls.Simulation(nw, 45.0, maxAgents = 1000, dt = 10.0, initialAgents = 500)
 
 @time Decls.RunSim(sim)
 
