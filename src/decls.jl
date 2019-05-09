@@ -31,7 +31,7 @@ headway = 0.5
 avgCarLen = 5.
 
 auctionTimeInterval = 20.0
-auctionMinCongestion = 0.0
+auctionMinCongestion = 0.3
 auctionMinParticipants = 5
 auctionCntr = 0
 
@@ -129,6 +129,8 @@ mutable struct Agent
     totalTravelCost::Real
     carLength::Real
     vMax::Real      #maximal car velocity in km/h
+    moneySpent::Dict{Int,Real}
+    moneyReceived::Dict{Int,Real}
 
     isSmart::Bool
 
@@ -163,6 +165,8 @@ mutable struct Agent
         a.spareTime = 0.;
         a.totalTravelCost = 0.;
         a.isSmart = true;
+        a.moneySpent = Dict{Int,Real}();
+        a.moneyReceived = Dict{Int,Real}();
         return  a;
     )::Agent
 end
@@ -236,12 +240,13 @@ mutable struct Simulation
     initialAgents::Int
     agentsFinished::Vector{Agent}
 
+    enableAuctions::Bool
     auctions::Vector{Auction}
     lastAuctionTime::Real
 
     timeElapsed::Real
     isRunning::Bool
-    Simulation(n::Network, tmax::Real; dt::Real = 0, dt_min = 1.0, maxAgents::Int = bigNum, maxIter::Int = bigNum, run::Bool = true, initialAgents::Int = 200) = (
+    Simulation(n::Network, tmax::Real; dt::Real = 0, dt_min = 1.0, maxAgents::Int = bigNum, maxIter::Int = bigNum, run::Bool = true, initialAgents::Int = 200, auctions::Bool = true) = (
         s = Simulation();
         s.network = n;
         s.agentsFinished = Vector{Agent}();
@@ -256,6 +261,7 @@ mutable struct Simulation
         s.isRunning = run;
         s.maxIter = maxIter;
         s.lastAuctionTime = 0.0;
+        s.enableAuctions = auctions;
         s.auctions = Vector{Auction}();
         s.simData = DataFrame(  iter = Int[],
                                t = Real[],
@@ -468,15 +474,15 @@ end
 
 function GetMTS(r::Road, k::Int)::Real
     if k < 0 || k > r.capacity
-        throw(Exception("Error at GetMTS(). k = $k is beyond range."))
+        error("Error at GetMTS(). k = $k is beyond range.")
     end
     return (r.capacity * r.length * (r.vMax - r.vMin)) / ((r.vMin - r.vMax) * k + r.capacity * r.vMax) ^ 2
 end
 
 function GetRouteDistance(n::Network, r::Vector{Int})::Real
     len = 0.
-    for i in 1:(length(r) - 1)
-        len += GetRoadByNodes(n, i, i + 1).length
+    for i in 1:(length(r)-1)
+        len += GetRoadByNodes(n, r[i], r[i + 1]).length
     end
     return len
 end
@@ -551,6 +557,7 @@ function SetShortestPath!(a::Agent, s::Simulation)::Real #When would this return
                 nextNode = path[nextNode] #Get next road travelled in shortest path
                 push!(a.bestRoute, nextNode) #Add road to overall shortest path
             end
+            pop!(a.bestRoute)
             a.timeEstim = EstimateTime(s.network, a.atNode.nodeID, a.destNode.nodeID)
             return a.bestRouteCost = dist
         else
@@ -574,6 +581,7 @@ function SetAlternatePath!(a::Agent, delNode::Int, bNode::Int, fNode::Int)::Real
                 nextNode = path[nextNode]
                 push!(a.alterRoute, nextNode)
             end
+            pop!(a.alterRoute)
             a.reducedGraph.weights[bNode,delNode] = oVal
             return a.alterRouteCost = dist
         else
@@ -803,10 +811,12 @@ function RunSim(s::Simulation)::Bool
             MakeAction!(a, s) #Do action
         end
 
-        if  s.timeElapsed - s.lastAuctionTime >= auctionTimeInterval
-            s.lastAuctionTime = s.timeElapsed
-            for au in GrabAuctionPlaces(s)
-                CommenceBidding(s, au)
+        if s.enableAuctions
+            if  s.timeElapsed - s.lastAuctionTime >= auctionTimeInterval
+                s.lastAuctionTime = s.timeElapsed
+                for au in GrabAuctionPlaces(s)
+                    CommenceBidding(s, au)
+                end
             end
         end
 
@@ -867,7 +877,8 @@ function GrabAuctionPlaces(s::Simulation)::Vector{Auction}
     auctions = Vector{Auction}()
     for r in s.network.roads
         if ( length(r.agents) / r.capacity < auctionMinCongestion ||
-             length(s.network.intersections[r.bNode].inRoads) < 2)
+             length(s.network.intersections[r.bNode].inRoads) < 2
+             )
             continue
         end
         #if (length(a.alterRoute) != 0) && (length(a.bestRoute) >= 2)
@@ -893,11 +904,16 @@ function StackModelAuction(au::Auction)
     while true
         #push!(au.MRs, Dict([(a.id, GetMR(a, au.road, au.time, length(au.road.agents) + 1 - au.rounds)) for a in au.participants]))
         #all_MRs = Dict([(a.id, GetMR(a, au.road, au.time, length(au.road.agents) + 1 - au.rounds)) for a in au.participants])
-        all_sBids = Dict([(a.id, (a.alterRouteCost - a.bestRouteCost)) for a in remaining_agents[getfield.(au.participants, :alterRouteCost) .> getfield.(au.participants, :bestRouteCost)]])
-        all_MRs = Dict([(a.id, GetMR(a, au.road, au.time, length(au.road.agents) + 1 - au.rounds)) for a in remaining_agents])
+
+        #recalculate MRs and sale offers for all the reamining participants
+        println("Auction: $(au.auctionID)")
+        all_sBids = Dict([(a.id, (a.alterRouteCost - a.bestRouteCost)) for a in remaining_agents[getfield.(remaining_agents, :alterRouteCost) .> getfield.(remaining_agents, :bestRouteCost)]])
+        all_MRs = Dict([(a.id, GetMR(a, au.road, au.time, maximum([length(au.road.agents) + 1 - au.rounds, 1]))) for a in remaining_agents])
 
         #MRsOrd = sort(collect(au.MRs[au.rounds]), by = x -> x[2])
         #sBidsOrd = sort(collect(au.sBids[au.rounds]), by = x -> x[2])
+
+        #sort offers in ascending order
         MRsOrd = sort(collect(all_MRs), by = x -> x[2])
         sBidsOrd = sort(collect(all_sBids), by = x -> x[2])
 
@@ -906,7 +922,7 @@ function StackModelAuction(au::Auction)
         end
 
         #minS = sBidsOrd[au.rounds][2]                       #lowest sale offer
-        minS = sBidsOrd[1][2]                                #lowest sale offer
+        minS = sBidsOrd[1][2]      #lowest sale offer
 
         #filter!(x -> x[1] != sBidsOrd[i][1], MRsOrd)   #delete buyer with the lowest sale offer as he will be bought out in the first place
         filter!(x -> x[1] != sBidsOrd[1][1], MRsOrd)   #delete buyer with the lowest sale offer as he will be bought out in the first place
@@ -929,7 +945,7 @@ function StackModelAuction(au::Auction)
             end
         end
         if k1 == 0
-            AddRegistry("No more buy-offs possible! Auction $(au.auctionID) stopped at round $(au.rounds) with $(length(au.participants)) participants.", true)
+            AddRegistry("No more buy-offs possible! Auction $(au.auctionID) stopped at round $(au.rounds) with $(length(remaining_agents)) participants.", true)
             AddRegistry("Auction $(au.auctionID) round $(au.rounds): total buyers' bid $(tot), lowest sale bid: $(minS) exceeded by $(100*(minS/tot-1))%", true)
             au.rounds -= 1
             break
@@ -943,6 +959,20 @@ function StackModelAuction(au::Auction)
 
             push!(au.clearingPrice, minS)
             push!(au.bBids, Dict([(MRsOrd[i][1], minimum([MRsOrd[i][2], maxOff])) for i in 1:length(MRsOrd)]))
+
+            #save buying bid values
+            for a in remaining_agents
+                if haskey(a.moneySpent, au.auctionID)
+                    a.moneySpent[au.auctionID] += au.bBids[end][a.id]
+                else
+                    push!(a.moneySpent, au.auctionID => 0.0)
+                end
+            end
+
+            #save sale offer
+
+            push!(remaining_agents[findall(x -> x.id == sBidsOrd[1][1], remaining_agents)[1]].moneyReceived, au.auctionID => minS)
+
             filter!(x -> x.id != sBidsOrd[1][1], remaining_agents) #agent with the lowest sale offer has been bought off, thus shall be removed from the auction
 
             println("Auction $(au.auctionID) round $(au.rounds): maximal offer $(maxOff) submitted by $(N - k1 + 1) buyer(s).")
