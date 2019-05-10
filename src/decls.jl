@@ -5,6 +5,7 @@ using OpenStreetMapX
 using Compose
 using DataFrames
 using Distributions
+using SparseArrays
 using Conda
 using PyCall
 
@@ -88,12 +89,16 @@ mutable struct Intersection
     outRoads::Vector{Road}
     spawnPoint::Bool
     destPoint::Bool
+    lat::Real
+    lon::Real
 
     Intersection(id::Int, posX = 0.0, posY = 0.0, spawnPoint = false, destPoint = false) =(
         inter = new();
         inter.nodeID = id;
         inter.posX = posX;
         inter.posY = posY;
+        inter.lat = 0.0;
+        inter.lon = 0.0;
         inter.spawnPoint = spawnPoint;
         inter.destPoint = destPoint;
         inter.inRoads = Vector{Road}();
@@ -131,6 +136,7 @@ mutable struct Agent
     vMax::Real      #maximal car velocity in km/h
     moneySpent::Dict{Int,Real}
     moneyReceived::Dict{Int,Real}
+    bannedRoads::Vector{Road}
 
     isSmart::Bool
 
@@ -167,6 +173,7 @@ mutable struct Agent
         a.isSmart = true;
         a.moneySpent = Dict{Int,Real}();
         a.moneyReceived = Dict{Int,Real}();
+        a.bannedRoads = Vector{Road}();
         return  a;
     )::Agent
 end
@@ -181,17 +188,18 @@ mutable struct Network
     graph::SimpleWeightedDiGraph
     osmData::OpenStreetMapX.OSMData
     mapData::MapData
-    Network(g::SimpleWeightedDiGraph, coords::Vector{Tuple{Float64,Float64,Float64}}) = (
+    Network(g::SimpleWeightedDiGraph, coords::Vector{Tuple{Float64,Float64,Float64}}, mdata::MapData) = (
             n = new();
             n.graph = deepcopy(g);
             n.numRoads = 0;
             n.spawns = Vector{Intersection}();
             n.dests = Vector{Intersection}();
             n.agents = Vector{Agent}();
+            n.mapData = mdata;
             InitNetwork!(n, coords);
             return n)::Network
-    Network(g::SimpleWeightedDiGraph, coords::Vector{ENU}) = (
-        return Network(g,[(i.east, i.north, i.up) for i in coords]))::Network
+    Network(g::SimpleWeightedDiGraph, coords::Vector{ENU}, m::OpenStreetMapX.MapData) = (
+        return Network(g,[(i.east, i.north, i.up) for i in coords], m))::Network
     Network(map::MapData) = (return  ConvertToNetwork(map))::Network
 end
 
@@ -203,8 +211,10 @@ mutable struct Auction
     sBids::Vector{Dict{Int, Real}}
     bBids::Vector{Dict{Int,Real}}
     clearingPrice::Vector{Real}
+    winners::Vector{Agent}
     rounds::Int
     time::Real
+    payments::SparseMatrixCSC{Real,Int}
 
     Auction(participants::Vector{Agent}, road::Road, time::Real) = (
         au = new();
@@ -220,6 +230,8 @@ mutable struct Auction
         au.sBids = Vector{Dict{Int, Real}}();
         au.bBids = Vector{Dict{Int, Real}}();
         au.clearingPrice = Vector{Real}();
+        au.winners = Vector{Agent}();
+        au.payments = spzeros(maximum(getfield.(participants, :id)), maximum(getfield.(participants, :id)));
     return au)::Auction
 end
 
@@ -330,6 +342,8 @@ function InitNetwork!(n::Network, coords::Vector{Tuple{Float64,Float64,Float64}}
     n.intersections = Vector{Intersection}(undef,n.graph.weights.m)
     for i in 1:n.graph.weights.m
         n.intersections[i] = Intersection(i, coords[i][1], coords[i][2])
+        n.intersections[i].lat = LLA(ENU(n.intersections[i].posX, n.intersections[i].posY, 0), n.mapData.bounds).lat
+        n.intersections[i].lon = LLA(ENU(n.intersections[i].posX, n.intersections[i].posY, 0), n.mapData.bounds).lon
     end
 
     for i in 1:n.graph.weights.m
@@ -343,11 +357,12 @@ function InitNetwork!(n::Network, coords::Vector{Tuple{Float64,Float64,Float64}}
     n.roads = Vector{Road}(undef, n.numRoads)
 
     r = 0
+    vels = OpenStreetMapX.get_velocities(n.mapData)
     for i in 1:n.graph.weights.m
         for j in 1:n.graph.weights.n
             if n.graph.weights[i, j] != 0
                 r += 1
-                n.roads[r] = Road(i, j, n.graph.weights[i, j], 50.0 / 3.6) #ToDo: take from osm
+                n.roads[r] = Road(i, j, n.graph.weights[i, j], (i <= vels.m && j <= vels.n) && vels[i,j] > 0 ? vels[i, j] : 40 / 3.6)
                 push!(n.intersections[i].outRoads, n.roads[r])
                 push!(n.intersections[j].inRoads, n.roads[r])
             end
@@ -366,7 +381,7 @@ function ConvertToNetwork(m::MapData)::Network
         add_edge!(g, m.v[edge[2]], m.v[edge[1]], dist)
     end
 
-    return Network(g, [m.nodes[m.n[i]] for i in 1:length(m.n)])
+    return Network(g, [m.nodes[m.n[i]] for i in 1:length(m.n)], m)
 end
 
 function SetSpawnAndDestPts!(n::Network, spawns::Vector{Int}, dests::Vector{Int})
@@ -541,7 +556,7 @@ end
 function SetWeights!(a::Agent, s::Simulation)
     for r in s.network.roads
         r.ttime = r.length / r.curVelocity
-        a.reducedGraph.weights[r.bNode, r.fNode] = r.ttime * GetVoT(a, s.timeElapsed) + r.length * a.CoF
+        a.reducedGraph.weights[r.bNode, r.fNode] = r in a.bannedRoads ? Inf : r.ttime * GetVoT(a, s.timeElapsed) + r.length * a.CoF
     end
 end
 
@@ -567,7 +582,11 @@ function SetShortestPath!(a::Agent, s::Simulation)::Real #When would this return
     return nothing
 end
 
-function SetAlternatePath!(a::Agent, delNode::Int, bNode::Int, fNode::Int)::Real
+function SetAlternatePath!(a::Agent)::Real
+    delNode = a.bestRoute[1]
+    bNode = a.atNode.nodeID
+    fNode = a.destNode.nodeID
+
     if a.atNode != nothing
         oVal = a.reducedGraph.weights[bNode,delNode]
         a.reducedGraph.weights[bNode,delNode] = Inf
@@ -636,7 +655,6 @@ function GetAgentLocation(a::Agent, n::Network)::Union{Tuple{Int,Int,Real}, Noth
 end
 
 function ReachedIntersection(a::Agent, s::Simulation) #Takes the agent and network
-    global list_of_finished_agents
 
     a.atNode = a.atRoad == nothing ? a.atNode : s.network.intersections[a.atRoad.fNode]
     if a.atNode == a.destNode
@@ -646,7 +664,7 @@ function ReachedIntersection(a::Agent, s::Simulation) #Takes the agent and netwo
         push!(a.travelledRoute,a.atNode.nodeID)
         push!(s.agentsFinished,a)
         a.arrivalTime = s.timeElapsed
-        a.totalTravelCost = (a.arrivalTime - a.deployTime) * a.VoT_base + GetRouteDistance(s.network, a.travelledRoute) * a.CoF
+        a.totalTravelCost = (a.arrivalTime - a.deployTime) * a.VoT_base + GetRouteDistance(s.network, a.travelledRoute) * a.CoF + GetTotalAuctionBalance(a)
         DestroyAgent(a, s.network) #Destroy the agent
     else
         if isempty(a.travelledRoute)
@@ -661,14 +679,13 @@ function ReachedIntersection(a::Agent, s::Simulation) #Takes the agent and netwo
             println("Agent $(a.id) has a path of infinity. That's not good news!")
             return
         else
-
             if isempty(a.origRoute)
                 cop = deepcopy(a.bestRoute)
                 oroute = pushfirst!(cop,a.atNode.nodeID)
                 a.origRoute = oroute
             end
 
-            SetAlternatePath!(a,a.bestRoute[1],a.atNode.nodeID,a.destNode.nodeID)
+            SetAlternatePath!(a)#,a.bestRoute[1],a.atNode.nodeID,a.destNode.nodeID)
             nextRoad = GetRoadByNodes(s.network, a.atNode.nodeID, a.bestRoute[1]) #Get the road agent is turning on
 
             if (CanFitAtRoad(a, nextRoad)) #Check that he fits on the road
@@ -684,33 +701,6 @@ function ReachedIntersection(a::Agent, s::Simulation) #Takes the agent and netwo
             end
         end
     end
-  # n = s.network
-  # if a.atNode == a.destNode #If the the node the agent is at is their destination node
-  #       AddRegistry("Agent $(a.id) destroyed.") #Add to registry that agent has been destroyed
-  #       DestroyAgent(a, n) #Destroy the agent
-  #   else #Otherwise if the agent hasn't yet arrived at their destination
-  #       AddRegistry("Agent $(a.id) reached intersection $(a.atNode.nodeID)")
-  #       SetWeights!(a, s) #Reset weight on edges for agent network
-  #       if SetShortestPath!(a, s) == Inf
-  #           println("Agent $(a.id) has a path of infinity. That's not good news!")
-  #
-  #           return
-  #       else            #turn into a new road section
-  #           # println("We are deleting the path between node $(a.atNode.nodeID) and $(a.bestRoute[1])")
-  #           SetAlternatePath!(a,a.bestRoute[1],a.atNode.nodeID,a.destNode.nodeID)
-  #
-  #           nextRoad = GetRoadByNodes(n, a.atNode.nodeID, a.bestRoute[1]) #Get the road agent is turning on
-  #
-  #           if (CanFitAtRoad(a, nextRoad)) #Check that he fits on the road
-  #               push!(nextRoad.agents, a.id) #Add agents ID onto roads agents array
-  #               a.atRoad = nextRoad #Set agent on new road
-  #               a.roadPosition = 0.0 #Set his position on road to zero
-  #               a.atNode = nothing #Agent no longer at node
-  #           else
-  #               #println("CANT FIT TO ROAD!!!! for agent $(a.id)\nThe road length $(nextRoad.length)\nThe road capacity $(nextRoad.capacity)\nThe number of agents currently on that road $(length(nextRoad.agents))\n")
-  #           end
-  #       end
-  #   end
 end
 
 function MakeAction!(a::Agent, sim::Simulation) #Takes an agent ID and simulation
@@ -721,7 +711,7 @@ function MakeAction!(a::Agent, sim::Simulation) #Takes an agent ID and simulatio
     else
         a.roadPosition += a.atRoad.curVelocity * dt #The velocity of the road agent is currently on multiplied by the timestep
         a.roadPosition = min(a.roadPosition, a.atRoad.length) #Take the minimum value between the position they are on the road and the length of that road
-        AddRegistry("Agent $(a.id) has travelled $(GetAgentLocation(a, sim.network)[3]) of $(a.atRoad.length) m from $(GetAgentLocation(a, sim.network)[1]) to $(GetAgentLocation(a, sim.network)[2]) at speed: $(a.atRoad.curVelocity*3.6)km/h")
+        #AddRegistry("Agent $(a.id) has travelled $(GetAgentLocation(a, sim.network)[3]) of $(a.atRoad.length) m from $(GetAgentLocation(a, sim.network)[1]) to $(GetAgentLocation(a, sim.network)[2]) at speed: $(a.atRoad.curVelocity*3.6)km/h")
         if a.roadPosition == a.atRoad.length #If their road position is at the end of the road
             ReachedIntersection(a, sim)
             # a.atNode = GetIntersectByNode(sim.network, a.atRoad.fNode) #Set the node I'm currently at
@@ -734,6 +724,10 @@ function MakeAction!(a::Agent, sim::Simulation) #Takes an agent ID and simulatio
     # end
 
     DumpAgentsInfo(a, sim) #Dump info into dataframe
+end
+
+function GetTotalAuctionBalance(a::Agent)
+    return sum(values(a.moneyReceived)) - sum(values(a.moneySpent))
 end
 
 function DumpAgentsInfo(a::Agent, s::Simulation)
@@ -767,8 +761,8 @@ function DumpIntersectionsInfo(nw::Network, map::OpenStreetMapX.OSMData)::DataFr
     df = DataFrame( id = Int[],
                     posX = Real[],
                     posY = Real[],
-            #        lat = Real[],
-            #        lon = Real[],
+                    lat = Real[],
+                    lon = Real[],
                     ingoing = String[],
                     outgoing = String[]
                     )
@@ -776,8 +770,8 @@ function DumpIntersectionsInfo(nw::Network, map::OpenStreetMapX.OSMData)::DataFr
         push!(df, Dict( :id => i.nodeID,
                         :posX => i.posX,
                         :posY => i.posY,
-                    #    :lat => map.nodes[nw.mData.n[i.nodeID]].lat,
-                    #    :lon => map.nodes[nw.mData.n[i.nodeID]].lon,
+                        :lat => i.lat,
+                        :lon => i.lon,
                         :ingoing => string([r.bNode for r in i.inRoads]),
                         :outgoing => string([r.fNode for r in i.outRoads])
         ))
@@ -785,15 +779,25 @@ function DumpIntersectionsInfo(nw::Network, map::OpenStreetMapX.OSMData)::DataFr
     return df
 end
 
-function RunSim(s::Simulation)::Bool
-    global once, list_of_finished_agents
+function DumpAuctionsInfo(sim::Simulation)::String
+    s = ""
+    for au in sim.auctions
+        s = s * "***Auction: $(au.auctionID):\n-$(length(au.participants)) participants: $(au.participants)\n-rounds: $(au.rounds)\n-time: $(au.time)\n-subject road: $(au.road)\n"
+        for r in 1:au.rounds
+            s = s * "\t*Round $r\n\t -Marginal revenues: $(au.MRs[r])\n\t -Buy offers: $(au.bBids[r])\n\t -Sale offers: $(au.sBids[r])\n\t -Clearing price: $(au.clearingPrice[r])\n\t -Winners: $(au.winners)\n"
+        end
+        s = s * "\n"
+    end
+    return s
+end
 
+function RunSim(s::Simulation)::Bool
     while s.timeElapsed < s.timeMax
         if !s.isRunning
             return false
         end
         s.iter += 1 #Add new number of iteration
-        AddRegistry("Iter #$(s.iter), time: $(s.timeElapsed), no. of agents: $(agentCntr), agents in total: $agentIDmax", true)
+        AddRegistry("[$(round(s.timeElapsed/s.timeMax*100))%] Iter #$(s.iter), time: $(s.timeElapsed), #agents: $(agentCntr), agents total: $agentIDmax", true)
 
         for r in s.network.roads #For each road in the network, set the velocity of the road based on congestion, etc.
             RecalculateRoad!(r)
@@ -848,7 +852,6 @@ function EuclideanNorm(p1::Tuple{Real,Real}, p2::Tuple{Real,Real})
     return sqrt((p1[1] - p2[1])^2 + (p1[2] - p2[2])^2)
 end
 
-
 function IsRoutePossible(n::Network, startNode::Int64, endNode::Int64)
     route = LightGraphs.dijkstra_shortest_paths(n.graph,endNode)
     dist = route.dists[startNode]
@@ -864,7 +867,7 @@ function GrabAuctionParticipants(nw::Network, r::Road)::Vector{Agent}
         for a in road.agents
             agent = GetAgentByID(nw, a)
             if length(agent.bestRoute) >=2
-                if agent.bestRoute[2] == r.fNode && agent.isSmart
+                if agent.bestRoute[2] == r.fNode && agent.isSmart && !(road in agent.bannedRoads)
                     push!(players,agent)
                 end
             end
@@ -893,38 +896,40 @@ function GrabAuctionPlaces(s::Simulation)::Vector{Auction}
 end
 
 function CommenceBidding(s::Simulation, auction::Auction)
-    StackModelAuction(auction)
+    StackModelAuction(s, auction)
+
+    for a in auction.winners
+        a.reducedGraph.weights[auction.road.bNode, auction.road.fNode] = Inf
+        push!(a.bannedRoads, auction.road)
+    end
 end
 
-function StackModelAuction(au::Auction)
+function StackModelAuction(s::Simulation, au::Auction)
     au.rounds = 1
     #push!(au.sBids, Dict([(a.id, (a.alterRouteCost - a.bestRouteCost)) for a in au.participants[getfield.(au.participants, :alterRouteCost) .> getfield.(au.participants, :bestRouteCost)]]))
     remaining_agents = deepcopy(au.participants)
 
-    while true
-        #push!(au.MRs, Dict([(a.id, GetMR(a, au.road, au.time, length(au.road.agents) + 1 - au.rounds)) for a in au.participants]))
-        #all_MRs = Dict([(a.id, GetMR(a, au.road, au.time, length(au.road.agents) + 1 - au.rounds)) for a in au.participants])
+    for a in au.participants
+        push!(a.moneySpent, au.auctionID => 0.)
+    end
 
+    while true
         #recalculate MRs and sale offers for all the reamining participants
         println("Auction: $(au.auctionID)")
         all_sBids = Dict([(a.id, (a.alterRouteCost - a.bestRouteCost)) for a in remaining_agents[getfield.(remaining_agents, :alterRouteCost) .> getfield.(remaining_agents, :bestRouteCost)]])
         all_MRs = Dict([(a.id, GetMR(a, au.road, au.time, maximum([length(au.road.agents) + 1 - au.rounds, 1]))) for a in remaining_agents])
-
-        #MRsOrd = sort(collect(au.MRs[au.rounds]), by = x -> x[2])
-        #sBidsOrd = sort(collect(au.sBids[au.rounds]), by = x -> x[2])
 
         #sort offers in ascending order
         MRsOrd = sort(collect(all_MRs), by = x -> x[2])
         sBidsOrd = sort(collect(all_sBids), by = x -> x[2])
 
         if length(MRsOrd) < 2 || length(sBidsOrd) < 1
-            return
+            @goto stop
         end
 
         #minS = sBidsOrd[au.rounds][2]                       #lowest sale offer
         minS = sBidsOrd[1][2]      #lowest sale offer
 
-        #filter!(x -> x[1] != sBidsOrd[i][1], MRsOrd)   #delete buyer with the lowest sale offer as he will be bought out in the first place
         filter!(x -> x[1] != sBidsOrd[1][1], MRsOrd)   #delete buyer with the lowest sale offer as he will be bought out in the first place
 
         push!(au.MRs, Dict(MRsOrd))
@@ -945,10 +950,11 @@ function StackModelAuction(au::Auction)
             end
         end
         if k1 == 0
+            @label stop
             AddRegistry("No more buy-offs possible! Auction $(au.auctionID) stopped at round $(au.rounds) with $(length(remaining_agents)) participants.", true)
             AddRegistry("Auction $(au.auctionID) round $(au.rounds): total buyers' bid $(tot), lowest sale bid: $(minS) exceeded by $(100*(minS/tot-1))%", true)
             au.rounds -= 1
-            break
+            return
         else
             last = ΔMRs[k1] * (N - k1 + 1)
             tot_minus_last = tot - last
@@ -960,18 +966,16 @@ function StackModelAuction(au::Auction)
             push!(au.clearingPrice, minS)
             push!(au.bBids, Dict([(MRsOrd[i][1], minimum([MRsOrd[i][2], maxOff])) for i in 1:length(MRsOrd)]))
 
-            #save buying bid values
-            for a in remaining_agents
-                if haskey(a.moneySpent, au.auctionID)
-                    a.moneySpent[au.auctionID] += au.bBids[end][a.id]
-                else
-                    push!(a.moneySpent, au.auctionID => 0.0)
-                end
+            for b in keys(au.bBids[end])
+                au.payments[b, sBidsOrd[1][1]] = au.bBids[end][b]
             end
 
-            #save sale offer
+            push!(s.network.agents[sBidsOrd[1][1]].moneyReceived, au.auctionID => minS)
+            push!(au.winners, s.network.agents[sBidsOrd[1][1]])
 
-            push!(remaining_agents[findall(x -> x.id == sBidsOrd[1][1], remaining_agents)[1]].moneyReceived, au.auctionID => minS)
+            for b in keys(au.bBids[end])
+                s.network.agents[b].moneySpent[au.auctionID] += au.bBids[end][b]
+            end
 
             filter!(x -> x.id != sBidsOrd[1][1], remaining_agents) #agent with the lowest sale offer has been bought off, thus shall be removed from the auction
 
@@ -979,7 +983,7 @@ function StackModelAuction(au::Auction)
         end
 
         au.rounds += 1
-        if au.rounds - 1 > N
+        if au.rounds > length(au.participants) - 1
             AddRegistry("Oops! Something's wrong with your while loop at auction $(au.auctionID).", true)
             break
         end
