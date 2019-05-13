@@ -31,9 +31,12 @@ agentIDmax = 0
 headway = 0.5
 avgCarLen = 5.
 
-auctionTimeInterval = 20.0
-auctionMinCongestion = 0.3
-auctionMinParticipants = 5
+auctionTimeInterval = 60.0
+auctionMinCongestion = 0.8
+auctionMinParticipants = 10
+auctionMinAgentsOnRoad = 10
+auctionsAtOnceMax = 5
+
 auctionCntr = 0
 
 muteRegistering = false
@@ -220,8 +223,6 @@ mutable struct Auction
         au = new();
         au.participants = participants;
         au.road = road;
-        #au.MRs = Dict{Int, Real}();
-        #au.sBids = Dict{Int, Real}();
         global auctionCntr += 1;
         au.auctionID = auctionCntr;
         au.rounds = 0;
@@ -779,6 +780,49 @@ function DumpIntersectionsInfo(nw::Network, map::OpenStreetMapX.OSMData)::DataFr
     return df
 end
 
+function DumpFinishedAgents(s::Simulation)::DataFrame
+    df = DataFrame( id = Int[],
+                    start_node = Int[],
+                    end_node = Int[],
+                    route = String[],
+                    orig_route = String[],
+                    banned_roads = String[],
+                    deploy_t = Real[],
+                    req_arr_t = Real[],
+                    arr_t = Real[],
+                    travel_t = Real[],
+                    travel_dist = Real[],
+                    ttc = Real[],
+                    vot_base = Real[],
+                    money_spent = Real[],
+                    money_received = Real[],
+                    money_balance = Real[],
+                    auctions = String[]
+    )
+
+    for a in s.agentsFinished
+        push!(df, Dict( :id => a.id,
+                        :start_node => a.origRoute[1],
+                        :end_node => a.destNode.nodeID,
+                        :route => string(a.travelledRoute),
+                        :orig_route => string(a.origRoute),
+                        :banned_roads => isempty(a.bannedRoads) ? "None" : string(hcat(getfield.(a.bannedRoads, :bNode), getfield.(a.bannedRoads, :fNode))),
+                        :deploy_t => a.deployTime / 60,
+                        :req_arr_t => a.requiredArrivalTime / 60,
+                        :arr_t => a.arrivalTime / 60,
+                        :travel_t => (a.arrivTime - a.deployTime) / 60,
+                        :travel_dist => GetRouteDistance(s.network, a.travelledRoute),
+                        :ttc => a.totalTravelCost,
+                        :vot_base => a.VoT_base,
+                        :money_spent => string(a.moneySpent),
+                        :money_received => string(a.moneyReceived),
+                        :money_balance => sum(values(a.moneyReceived)) - sum(values(a.moneySpent)),
+                        :auctions => isempty(a.moneySpent) ? "None" : string(keys(a.moneySpent))
+        ))
+    end
+    return df
+end
+
 function DumpAuctionsInfo(sim::Simulation)::String
     s = ""
     for au in sim.auctions
@@ -880,17 +924,29 @@ function GrabAuctionPlaces(s::Simulation)::Vector{Auction}
     auctions = Vector{Auction}()
     for r in s.network.roads
         if ( length(r.agents) / r.capacity < auctionMinCongestion ||
-             length(s.network.intersections[r.bNode].inRoads) < 2
+             length(s.network.intersections[r.bNode].inRoads) < 2 ||
+             length(r.agents) < auctionMinAgentsOnRoad
              )
             continue
         end
-        #if (length(a.alterRoute) != 0) && (length(a.bestRoute) >= 2)
+
         particip = GrabAuctionParticipants(s.network, r)
+
+        #filter out minimal congestion rate threshold
         if length(particip) >= auctionMinParticipants
-            au = Auction(particip, r, s.timeElapsed)
-            push!(auctions, au)
-            push!(s.auctions, au)
+            push!(auctions, Auction(particip, r, s.timeElapsed))
         end
+    end
+
+    #leave only auctions for roads that are most congested
+    if length(auctions) > auctionsAtOnceMax
+        sort_k = sort([length(auctions[i].road.agents) / auctions[i].road.capacity for i in 1:length(auctions)])
+        min_k = sort_k[end - auctionsAtOnceMax + 1]
+        filter!(x -> (length(x.road.agents) / x.road.capacity) >= min_k, auctions)
+    end
+
+    for au in auctions
+        push!(s.auctions, au)
     end
     return auctions
 end
@@ -927,7 +983,6 @@ function StackModelAuction(s::Simulation, au::Auction)
             @goto stop
         end
 
-        #minS = sBidsOrd[au.rounds][2]                       #lowest sale offer
         minS = sBidsOrd[1][2]      #lowest sale offer
 
         filter!(x -> x[1] != sBidsOrd[1][1], MRsOrd)   #delete buyer with the lowest sale offer as he will be bought out in the first place
