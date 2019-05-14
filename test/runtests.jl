@@ -43,7 +43,12 @@ Decls.SetSpawnAndDestPts!(nw, Decls.GetNodesOutsideRadius(nw,(-2000.,-2000.),400
 sim = Decls.Simulation(nw, 60 * 60 + 1, maxAgents = 4000, dt = 10.0, initialAgents = 500, auctions = true)
 #sim2 = Decls.Simulation(nw, 2 * 60 , maxAgents = 4000, dt = 10.0, initialAgents = 500, auctions = true)
 
-@time Decls.RunSim(sim)
+sim.timeStep = 20
+@time Decls.RunSim(sim, 100)
+
+Decls.SaveSim(sim, "sim")
+
+sim = Decls.LoadSim("sim")
 
 CSV.write(raw".\results\history.csv", sim.simData)
 CSV.write(raw".\results\roadInfo.csv", sim.roadInfo)
@@ -51,16 +56,21 @@ CSV.write(raw".\results\coords.csv", Decls.GetIntersectionCoords(sim.network))
 CSV.write(raw".\results\interInfo.csv", Decls.DumpIntersectionsInfo(nw, map, mData))
 write(raw".\results\auctions.txt", Decls.DumpAuctionsInfo(sim))
 CSV.write(raw".\results\finished.csv", Decls.DumpFinishedAgents(sim))
+writedlm(raw".\results\alternatecosts.csv", rcosts, "\n")
 
 writedlm(raw".\results\log.txt", Decls.simLog, "\n")
 writedlm(raw".\results\costs.csv", ttc, ",")
 
-# f = open(raw".\results\sim.txt", "w")
-# serialize(f, sim)
-# close(f)
+f = open(raw".\results\sim2.txt", "w")
+serialize(f, sim)
+close(f)
 
-# map = OpenStreetMapX.parseOSM(raw"maps\buffaloF.osm")
-# crop!(map)
-# mData = get_map_data("maps", "buffaloF.osm")
+f = open(raw".\results\sim2.txt", "r")
+sim = deserialize(f)
+close(f)
+
+ map = OpenStreetMapX.parseOSM(raw"maps\buffaloF.osm")
+ crop!(map)
+ mData = get_map_data("maps", "buffaloF.osm")
 
 Visuals.GraphAgents(map, mData, nw.agents)
