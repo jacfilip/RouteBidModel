@@ -1,28 +1,32 @@
 module RouteBidModel
 
-using Pkg
-
-Pkg.add("LightGraphs")
-Pkg.add("SimpleWeightedGraphs")
-Pkg.add("OpenStreetMapX")
-Pkg.add("DataFrames")
-Pkg.add("DataFramesMeta")
-Pkg.add("Distributions")
-Pkg.add("CSV")
-Pkg.add("Compose")
-Pkg.add("Colors")
-Pkg.add("Plots")
-
 using Test
 using OpenStreetMapX
 using LightGraphs, SimpleWeightedGraphs
 using DataFrames, DataFramesMeta
 using Distributions
 using CSV
-using Compose
+using Compose, Colors
+using Conda
+using PyCall
+using GraphPlot
+using Plots
+using SparseArrays
+using Serialization
 
-include("./decls.jl")
+export Network
+export Simulation
+export Agent
+export Road
+export Intersection
+export SetLL
+export MakeAction!
+export RunSim
+export SetSpawnAndDestPts!
+export SpawnAgentAtRandom
 
-#include("./run.jl")
+include("decls.jl")
+include("osm_convert.jl")
+include("Visuals.jl")
 
-end  # module RouteBidModel
+end 

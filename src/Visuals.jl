@@ -1,13 +1,3 @@
-module Visuals
-# using Pkg
-# Pkg.add("PyCall")
-# Pkg.add("Conda")
-# Pkg.add("OpenStreetMapX")
-# Conda.runconda(`install folium -c conda-forge`)
-using Conda
-using OpenStreetMapX
-using PyCall
-
 function GetLLOfRoute(map::OpenStreetMapX.OSMData, mData::MapData,route::Array{Int64})
     myroute = []
     for nodeID in route
@@ -86,6 +76,4 @@ function GraphAgents(map::OpenStreetMapX.OSMData, mData::MapData, agents::Array{
     m.fit_bounds(MAP_BOUNDS)
     m.save("AgentsGraph.html")
     println("File Saved!")
-end
-
 end
