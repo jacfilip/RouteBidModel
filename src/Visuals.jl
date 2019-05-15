@@ -8,7 +8,7 @@ function GetLLOfRoute(map::OpenStreetMapX.OSMData, mData::MapData,route::Array{I
     return myroute
 end
 
-function OVAGraph(map::OpenStreetMapX.OSMData, mData::MapData, a::Main.Decls.Agent)
+function OVAGraph(map::OpenStreetMapX.OSMData, mData::MapData, a::Agent)
 
     flm = pyimport("folium")
     matplotlib_cm = pyimport("matplotlib.cm")
@@ -48,7 +48,7 @@ function OVAGraph(map::OpenStreetMapX.OSMData, mData::MapData, a::Main.Decls.Age
     println("File Saved!")
 end
 
-function GraphAgents(map::OpenStreetMapX.OSMData, mData::MapData, agents::Array{Main.Decls.Agent})
+function GraphAgents(map::OpenStreetMapX.OSMData, mData::MapData, agents::Array{Agent})
 
     flm = pyimport("folium")
     matplotlib_cm = pyimport("matplotlib.cm")
