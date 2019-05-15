@@ -1,6 +1,7 @@
 module RouteBidModel
 
 using Test
+using Random
 using OpenStreetMapX
 using LightGraphs, SimpleWeightedGraphs
 using DataFrames, DataFramesMeta
