@@ -40,15 +40,14 @@ file = "buffaloF.osm"
 nw = CreateNetworkFromFile(path, file)
 Decls.SetSpawnAndDestPts!(nw, Decls.GetNodesOutsideRadius(nw,(-2000.,-2000.),4000.), Decls.GetNodesInRadius(nw,(-2000.,-2000.),2000.))
 
-sim = Decls.Simulation(nw, 60 * 60 + 1, maxAgents = 4000, dt = 10.0, initialAgents = 500, auctions = true)
+sim = Decls.Simulation(nw, 75 * 60 + 1, maxAgents = 4000, dt = 10.0, initialAgents = 500, auctions = true)
 #sim2 = Decls.Simulation(nw, 2 * 60 , maxAgents = 4000, dt = 10.0, initialAgents = 500, auctions = true)
 
-sim.timeStep = 20
-@time Decls.RunSim(sim, 100)
+@time Decls.RunSim(sim)
 
-Decls.SaveSim(sim, "sim")
+Decls.SaveSim(sim, "sim_stack_4k_10dt_500ini_t100")
 
-sim = Decls.LoadSim("sim")
+sim = Decls.LoadSim("sim_stack_4k_10dt_500ini_t=40")
 
 CSV.write(raw".\results\history.csv", sim.simData)
 CSV.write(raw".\results\roadInfo.csv", sim.roadInfo)
@@ -73,4 +72,6 @@ close(f)
  crop!(map)
  mData = get_map_data("maps", "buffaloF.osm")
 
-Visuals.GraphAgents(map, mData, nw.agents)
+Visuals.GraphAgents(map, mData, sim.network.agents)
+
+#6469
