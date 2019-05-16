@@ -38,7 +38,7 @@ auctionsAtOnceMax = 5
 muteRegistering = false
 simLog = Vector{String}()
 
-saveEach = 90  #in iterations
+saveEach = 100  #in iterations
 
 path = "maps"
 file = "buffaloF.osm"
@@ -821,8 +821,8 @@ function DumpFinishedAgents(s::Simulation)::DataFrame
                     travel_dist = Real[],
                     ttc = Real[],
                     vot_base = Real[],
-                    money_spent = Real[],
-                    money_received = Real[],
+                    money_spent = String[],
+                    money_received = String[],
                     money_balance = Real[],
                     auctions = String[]
     )
@@ -838,11 +838,11 @@ function DumpFinishedAgents(s::Simulation)::DataFrame
                         :req_arr_t => a.requiredArrivalTime / 60,
                         :arr_t => a.arrivalTime / 60,
                         :travel_t => (a.arrivalTime - a.deployTime) / 60,
-                        :travel_dist => GetRouteDistance(s.network, a.travelledRoute),
+                        :travel_dist => GetRouteDistance(s.network, a.travelledRoute) / 1000,
                         :ttc => a.totalTravelCost,
-                        :vot_base => a.VoT_base,
-                        :money_spent => string(a.moneySpent),
-                        :money_received => string(a.moneyReceived),
+                        :vot_base => a.VoT_base * 3600,
+                        :money_spent => isempty(a.moneySpent) ? "0" : string(a.moneySpent),
+                        :money_received => isempty(a.moneyReceived) ? "0" : string(a.moneyReceived),
                         :money_balance => sum(values(a.moneyReceived)) - sum(values(a.moneySpent)),
                         :auctions => isempty(a.moneySpent) ? "None" : string(keys(a.moneySpent))
         ))
@@ -850,16 +850,45 @@ function DumpFinishedAgents(s::Simulation)::DataFrame
     return df
 end
 
-function DumpAuctionsInfo(sim::Simulation)::String
+function DumpAuctionsInfo(sim::Simulation)::DataFrame
     s = ""
+    df = DataFrame( auction = Int[],
+                    b_node = Int[],
+                    f_node = Int[],
+                    round = Int[],
+                    agent = Int[],
+                    sale_bid = Real[],
+                    buy_bid = Real[],
+                    MR = Real[],
+                    clearingPrice = Real[],
+                    is_winner = Bool[]
+                    )
     for au in sim.auctions
-        s = s * "***Auction: $(au.auctionID):\n-$(length(au.participants)) participants: $(au.participants)\n-rounds: $(au.rounds)\n-time: $(au.time)\n-subject road: $(au.road)\n"
         for r in 1:au.rounds
-            s = s * "\t*Round $r\n\t -Marginal revenues: $(au.MRs[r])\n\t -Buy offers: $(au.bBids[r])\n\t -Sale offers: $(au.sBids[r])\n\t -Clearing price: $(au.clearingPrice[r])\n\t -Winners: $(au.winners)\n"
+            for a in au.participants
+                push!(df, Dict( :auction => au.auctionID,
+                                :b_node => au.road.bNode,
+                                :f_node => au.road.fNode,
+                                :round => r,
+                                :agent => a.id,
+                                :sale_bid => a.id in keys(au.sBids[r]) ? au.sBids[r][a.id] : Inf,
+                                :buy_bid => a.id in keys(au.bBids[r]) ? au.bBids[r][a.id] : 0,
+                                :MR => a.id in keys(au.MRs[r]) ? au.MRs[r][a.id] : 0,
+                                :clearingPrice => au.clearingPrice[r],
+                                :is_winner => a == au.winners[r]
+                ))
+            end
         end
-        s = s * "\n"
     end
-    return s
+    return df
+    # for au in sim.auctions
+    #     s = s * "***Auction: $(au.auctionID):\n-$(length(au.participants)) participants: $(au.participants)\n-rounds: $(au.rounds)\n-time: $(au.time)\n-subject road: $(au.road)\n"
+    #     for r in 1:au.rounds
+    #         s = s * "\t*Round $r\n\t -Marginal revenues: $(au.MRs[r])\n\t -Buy offers: $(au.bBids[r])\n\t -Sale offers: $(au.sBids[r])\n\t -Clearing price: $(au.clearingPrice[r])\n\t -Winners: $(au.winners)\n"
+    #     end
+    #     s = s * "\n"
+    # end
+    # return s
 end
 
 function RunSim(s::Simulation, runTime::Int = 0)::Bool
