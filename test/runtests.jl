@@ -43,16 +43,17 @@ Decls.SetSpawnAndDestPts!(nw, Decls.GetNodesOutsideRadius(nw,(-2000.,-2000.),400
 sim = Decls.Simulation(nw, 75 * 60 + 1, maxAgents = 4000, dt = 10.0, initialAgents = 500, auctions = true)
 #sim2 = Decls.Simulation(nw, 2 * 60 , maxAgents = 4000, dt = 10.0, initialAgents = 500, auctions = true)
 
-@time Decls.RunSim(sim)
+@time Decls.RunSim(sim, 40)
 
-Decls.SaveSim(sim, "sim_stack_4k_10dt_500ini_t100")
+Decls.SaveSim(sim, "sim_stack_4k_10dt_500ini_t=1950")
 
-sim = Decls.LoadSim("sim_stack_4k_10dt_500ini_t=40")
+sim = Decls.LoadSim("sim_stack_4k_10dt_500ini_t=1950")
 
 CSV.write(raw".\results\history.csv", sim.simData)
 CSV.write(raw".\results\roadInfo.csv", sim.roadInfo)
 CSV.write(raw".\results\coords.csv", Decls.GetIntersectionCoords(sim.network))
 CSV.write(raw".\results\interInfo.csv", Decls.DumpIntersectionsInfo(nw, map, mData))
+CSV.write(raw".\results\auctions.csv", Decls.DumpAuctionsInfo(sim))
 write(raw".\results\auctions.txt", Decls.DumpAuctionsInfo(sim))
 CSV.write(raw".\results\finished.csv", Decls.DumpFinishedAgents(sim))
 writedlm(raw".\results\alternatecosts.csv", rcosts, "\n")
