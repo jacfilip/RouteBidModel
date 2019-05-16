@@ -1000,7 +1000,7 @@ function CommenceBidding(s::Simulation, auction::Auction)
         a.reducedGraph.weights[auction.road.bNode, auction.road.fNode] = Inf
         push!(a.bannedRoads, auction.road)
         SetShortestPath!(a, s.network)
-        SetAlternatePath!(a, s.network)
+        SetAlternatePath!(a)
     end
 end
 
