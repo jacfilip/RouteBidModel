@@ -1,13 +1,3 @@
-module Visuals
-# using Pkg
-# Pkg.add("PyCall")
-# Pkg.add("Conda")
-# Pkg.add("OpenStreetMapX")
-# Conda.runconda(`install folium -c conda-forge`)
-using Conda
-using OpenStreetMapX
-using PyCall
-
 function GetLLOfRoute(map::OpenStreetMapX.OSMData, mData::MapData,route::Array{Int64})
     myroute = []
     for nodeID in route
@@ -18,7 +8,7 @@ function GetLLOfRoute(map::OpenStreetMapX.OSMData, mData::MapData,route::Array{I
     return myroute
 end
 
-function OVAGraph(map::OpenStreetMapX.OSMData, mData::MapData, a::Main.Decls.Agent)
+function OVAGraph(map::OpenStreetMapX.OSMData, mData::MapData, a::Agent)
 
     flm = pyimport("folium")
     matplotlib_cm = pyimport("matplotlib.cm")
@@ -58,7 +48,7 @@ function OVAGraph(map::OpenStreetMapX.OSMData, mData::MapData, a::Main.Decls.Age
     println("File Saved!")
 end
 
-function GraphAgents(map::OpenStreetMapX.OSMData, mData::MapData, agents::Array{Main.Decls.Agent})
+function GraphAgents(map::OpenStreetMapX.OSMData, mData::MapData, agents::Array{Agent})
 
     flm = pyimport("folium")
     matplotlib_cm = pyimport("matplotlib.cm")
@@ -86,6 +76,4 @@ function GraphAgents(map::OpenStreetMapX.OSMData, mData::MapData, agents::Array{
     m.fit_bounds(MAP_BOUNDS)
     m.save("AgentsGraph.html")
     println("File Saved!")
-end
-
 end

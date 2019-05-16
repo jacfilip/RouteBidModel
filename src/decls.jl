@@ -1,25 +1,4 @@
-module Decls
-
-using LightGraphs, SimpleWeightedGraphs
-using OpenStreetMapX
-using Compose
-using DataFrames
-using Distributions
-using SparseArrays
-using Conda
-using PyCall
-using Serialization
-
-export Network
-export Simulation
-export Agent
-export Road
-export Intersection
-export SetLL
-export MakeAction!
-export RunSim
-export SetSpawnAndDestPts!
-export SpawnAgentAtRandom
+### PARAMS
 
 using Random
 Random.seed!(0);
@@ -42,6 +21,8 @@ saveEach = 100  #in iterations
 
 path = "maps"
 file = "buffaloF.osm"
+
+####
 
 function AddRegistry(msg::String, prompt::Bool = false)
     if muteRegistering return end
@@ -1133,5 +1114,3 @@ function LoadSim(file::String)::Simulation
 
     return sim
 end
-
-end  # module  Decls
