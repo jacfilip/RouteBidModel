@@ -14,10 +14,10 @@ auctionMinParticipants = 10
 auctionMinAgentsOnRoad = 10
 auctionsAtOnceMax = 5
 
-auctionCntr = 0
-
 muteRegistering = false
 simLog = Vector{String}()
+
+saveEach = 100  #in iterations
 
 path = "maps"
 file = "buffaloF.osm"
@@ -94,7 +94,6 @@ mutable struct Agent
     atRoad::Union{Road,Nothing}
     roadPosition::Real
     atNode::Union{Intersection,Nothing}
-    BorS::Int64
     destNode::Intersection
     bestRoute::Vector{Int}
     alterRoute::Vector{Int}
@@ -133,14 +132,13 @@ mutable struct Agent
         a.VoT_base = maximum([rand(Distributions.Normal(24.52/60.0/60.0, 3.0/60.0/60.0)), 0.0]);
         a.VoT_dev =  1.0 / (rand() * 8.0 + 2.0);
         a.CoF = 0.15e-3;         #ToDo: Check and draw value
-        a.carLength = 3.0;      #m ToDo: Draw value
+        a.carLength = 3.0;      #m
         a.vMax = 120.0 / 3.6;         #m/s
         a.bestRoute = Vector{Int}();
         a.alterRoute = Vector{Int}();
         a.origRoute = Vector{Int}();
         a.travelledRoute = Vector{Int}();
         a.atRoad = nothing;
-        a.BorS = rand(Categorical([0.5,0.5]),1)[1];
         a.deployTime = deployTime;
         a.timeEstim = 0.;
         a.requiredArrivalTime = arrivTime;
@@ -200,12 +198,11 @@ mutable struct Auction
     time::Real
     payments::SparseMatrixCSC{Real,Int}
 
-    Auction(participants::Vector{Agent}, road::Road, time::Real) = (
+    Auction(id::Int, participants::Vector{Agent}, road::Road, time::Real) = (
         au = new();
         au.participants = participants;
         au.road = road;
-        global auctionCntr += 1;
-        au.auctionID = auctionCntr;
+        au.auctionID = id;
         au.rounds = 0;
         au.time = time;
         au.MRs = Vector{Dict{Int, Real}}();
@@ -234,6 +231,7 @@ mutable struct Simulation
     initialAgents::Int
     agentsFinished::Vector{Agent}
 
+    auctionCntr::Int
     enableAuctions::Bool
     auctions::Vector{Auction}
     lastAuctionTime::Real
@@ -255,6 +253,7 @@ mutable struct Simulation
         s.isRunning = run;
         s.maxIter = maxIter;
         s.lastAuctionTime = 0.0;
+        s.auctionCntr = 0;
         s.enableAuctions = auctions;
         s.auctions = Vector{Auction}();
         s.simData = DataFrame(  iter = Int[],
@@ -516,7 +515,6 @@ function SpawnAgentAtRandom(n::Network, time::Real = 0.0)
     n.agentIDmax += 1
     n.agentCntr += 1
     push!(n.agents, Agent(n.agentIDmax, n.intersections[start],n.intersections[dest],n.graph, time, arrivT)) #Randomly spawn an agent within the outer region
-    AddRegistry("Agent #$(n.agentIDmax) has been created.") #Adds to registry that agent has been created
 end
 
 function RemoveFromRoad!(r::Road, a::Agent)
@@ -604,13 +602,13 @@ function SetAlternatePath!(a::Agent)::Real
     #     return a.alterRouteCost = dist
     # end
     # return nothing
+    if length(a.bestRoute) < 2 return Inf end
     empty!(a.alterRoute)
 
     if a.atNode != nothing
         delNode1 = nxtNode = a.atNode.nodeID
         delNode2 = a.bestRoute[1]
     else
-        if length(a.bestRoute) < 2 return Inf end
         delNode1 = a.bestRoute[1]
         delNode2 = a.bestRoute[2]
         nxtNode = a.atRoad.fNode
@@ -804,8 +802,8 @@ function DumpFinishedAgents(s::Simulation)::DataFrame
                     travel_dist = Real[],
                     ttc = Real[],
                     vot_base = Real[],
-                    money_spent = Real[],
-                    money_received = Real[],
+                    money_spent = String[],
+                    money_received = String[],
                     money_balance = Real[],
                     auctions = String[]
     )
@@ -820,12 +818,12 @@ function DumpFinishedAgents(s::Simulation)::DataFrame
                         :deploy_t => a.deployTime / 60,
                         :req_arr_t => a.requiredArrivalTime / 60,
                         :arr_t => a.arrivalTime / 60,
-                        :travel_t => (a.arrivTime - a.deployTime) / 60,
-                        :travel_dist => GetRouteDistance(s.network, a.travelledRoute),
+                        :travel_t => (a.arrivalTime - a.deployTime) / 60,
+                        :travel_dist => GetRouteDistance(s.network, a.travelledRoute) / 1000,
                         :ttc => a.totalTravelCost,
-                        :vot_base => a.VoT_base,
-                        :money_spent => string(a.moneySpent),
-                        :money_received => string(a.moneyReceived),
+                        :vot_base => a.VoT_base * 3600,
+                        :money_spent => isempty(a.moneySpent) ? "0" : string(a.moneySpent),
+                        :money_received => isempty(a.moneyReceived) ? "0" : string(a.moneyReceived),
                         :money_balance => sum(values(a.moneyReceived)) - sum(values(a.moneySpent)),
                         :auctions => isempty(a.moneySpent) ? "None" : string(keys(a.moneySpent))
         ))
@@ -833,16 +831,45 @@ function DumpFinishedAgents(s::Simulation)::DataFrame
     return df
 end
 
-function DumpAuctionsInfo(sim::Simulation)::String
+function DumpAuctionsInfo(sim::Simulation)::DataFrame
     s = ""
+    df = DataFrame( auction = Int[],
+                    b_node = Int[],
+                    f_node = Int[],
+                    round = Int[],
+                    agent = Int[],
+                    sale_bid = Real[],
+                    buy_bid = Real[],
+                    MR = Real[],
+                    clearingPrice = Real[],
+                    is_winner = Bool[]
+                    )
     for au in sim.auctions
-        s = s * "***Auction: $(au.auctionID):\n-$(length(au.participants)) participants: $(au.participants)\n-rounds: $(au.rounds)\n-time: $(au.time)\n-subject road: $(au.road)\n"
         for r in 1:au.rounds
-            s = s * "\t*Round $r\n\t -Marginal revenues: $(au.MRs[r])\n\t -Buy offers: $(au.bBids[r])\n\t -Sale offers: $(au.sBids[r])\n\t -Clearing price: $(au.clearingPrice[r])\n\t -Winners: $(au.winners)\n"
+            for a in au.participants
+                push!(df, Dict( :auction => au.auctionID,
+                                :b_node => au.road.bNode,
+                                :f_node => au.road.fNode,
+                                :round => r,
+                                :agent => a.id,
+                                :sale_bid => a.id in keys(au.sBids[r]) ? au.sBids[r][a.id] : Inf,
+                                :buy_bid => a.id in keys(au.bBids[r]) ? au.bBids[r][a.id] : 0,
+                                :MR => a.id in keys(au.MRs[r]) ? au.MRs[r][a.id] : 0,
+                                :clearingPrice => au.clearingPrice[r],
+                                :is_winner => a == au.winners[r]
+                ))
+            end
         end
-        s = s * "\n"
     end
-    return s
+    return df
+    # for au in sim.auctions
+    #     s = s * "***Auction: $(au.auctionID):\n-$(length(au.participants)) participants: $(au.participants)\n-rounds: $(au.rounds)\n-time: $(au.time)\n-subject road: $(au.road)\n"
+    #     for r in 1:au.rounds
+    #         s = s * "\t*Round $r\n\t -Marginal revenues: $(au.MRs[r])\n\t -Buy offers: $(au.bBids[r])\n\t -Sale offers: $(au.sBids[r])\n\t -Clearing price: $(au.clearingPrice[r])\n\t -Winners: $(au.winners)\n"
+    #     end
+    #     s = s * "\n"
+    # end
+    # return s
 end
 
 function RunSim(s::Simulation, runTime::Int = 0)::Bool
@@ -884,16 +911,14 @@ function RunSim(s::Simulation, runTime::Int = 0)::Bool
 
         DumpRoadsInfo(s)
 
-        if (s.iter % 50) == 0
-            SaveSim(s, "sim_stack_60m_4k_10dt_500ini")
+        if (s.iter % saveEach) == 0
+            SaveSim(s, "sim_stack_4k_10dt_500ini_t=" * string(Int(floor(s.timeElapsed))))
         end
 
         s.timeElapsed += s.timeStep
 
         if s.iter > s.maxIter return false end
     end
-    # OVAGraph("/Users/arashdehghan/Desktop/RouteBidModel/maps/","buffaloF.osm",s.agentsFinished[1])
-    # GraphAgents("/Users/arashdehghan/Desktop/RouteBidModel/maps/","buffaloF.osm",s.agentsFinished)
     return true
 end
 
@@ -928,12 +953,16 @@ function GrabAuctionParticipants(nw::Network, r::Road)::Vector{Agent}
     for road in nw.intersections[r.bNode].inRoads
         for a in road.agents
             agent = GetAgentByID(nw, a)
-            SetShortestPath!(agent, nw)
-            SetAlternatePath!(agent)
+            if SetShortestPath!(agent, nw) > SetAlternatePath!(agent)
+                AddRegistry("Oops! The best route has higher cost than alternative. Something is not right.", true)
+            end
             if length(agent.bestRoute) >= 2
                 #println("road fNode: $(r.fNode), agent $(agent.id): bestroute: $(agent.bestRoute[1]) -> $(agent.bestRoute[2])")
                 if agent.bestRoute[2] == r.fNode && agent.isSmart && !(road in agent.bannedRoads)
                     push!(players,agent)
+                end
+                if agent.bestRoute[2] != r.fNode
+                    AddRegistry("Auction road is $(r.bNode)  $(r.fNode), but agent's $(agent.id) bestroute is $(agent.bestRoute[1]) -> $(agent.bestRoute[2])")
                 end
             end
         end
@@ -955,7 +984,8 @@ function GrabAuctionPlaces(s::Simulation)::Vector{Auction}
 
         #filter out minimal congestion rate threshold
         if length(particip) >= auctionMinParticipants
-            push!(auctions, Auction(particip, r, s.timeElapsed))
+            s.auctionCntr += 1
+            push!(auctions, Auction(s.auctionCntr, particip, r, s.timeElapsed))
         end
     end
 
@@ -969,7 +999,7 @@ function GrabAuctionPlaces(s::Simulation)::Vector{Auction}
     for au in auctions
         push!(s.auctions, au)
     end
-    AddRegistry("$(length(auctions)) potential auction spots have been selected.", true)
+    AddRegistry("$(length(auctions)) potential auction spot(s) have been selected.", true)
     return auctions
 end
 
@@ -979,6 +1009,8 @@ function CommenceBidding(s::Simulation, auction::Auction)
     for a in auction.winners
         a.reducedGraph.weights[auction.road.bNode, auction.road.fNode] = Inf
         push!(a.bannedRoads, auction.road)
+        SetShortestPath!(a, s.network)
+        SetAlternatePath!(a)
     end
 end
 
@@ -1051,7 +1083,7 @@ function StackModelAuction(s::Simulation, au::Auction)
             push!(au.winners, seller)
 
             for b in keys(au.bBids[end])
-                GetAgentbyID(s.network, b).moneySpent[au.auctionID] += au.bBids[end][b]
+                GetAgentByID(s.network, b).moneySpent[au.auctionID] += au.bBids[end][b]
             end
 
             filter!(x -> x.id != sBidsOrd[1][1], remaining_agents) #agent with the lowest sale offer has been bought off, thus shall be removed from the auction
@@ -1071,7 +1103,7 @@ function SaveSim(sim::Simulation, file::String)::Bool
     f = open(".\\results\\simulations\\" * file * ".sim", "w")
     serialize(f, sim)
     close(f)
-
+    AddRegistry("File successfully saved as " * ".\\results\\simulations\\" * file * ".sim", true)
     return true
 end
 
