@@ -1085,34 +1085,37 @@ end
 
 function CommenceBidding(s::Simulation, auction::Auction)
     # println(length(auction.participants))
-    # StackModelAuction(s, auction)
-    #
-    # for a in auction.winners
-    #     a.reducedGraph.weights[auction.road.bNode, auction.road.fNode] = Inf
-    #     push!(a.bannedRoads, auction.road)
-    #     SetShortestPath!(a, s.network)
-    #     SetAlternatePath!(a)
-    # end
 
-    h = HungarianAuction(s,auction)
-     if h != nothing
-              for agreement in h
-                      buyer = agreement[1]
-                      seller = agreement[2]
-                      price = agreement[3]
-                      println("Agent #$(agreement[2].id) is bought off by Agent #$(agreement[1].id) for \$$(agreement[3])")
-                      seller.reducedGraph.weights[auction.road.bNode, auction.road.fNode] = Inf
-                      push!(seller.bannedRoads, auction.road)
-                      SetShortestPath!(seller, s.network)
-                      SetAlternatePath!(seller)
-                      push!(buyer.moneySpent, auction.auctionID => price )
-                      push!(seller.moneyReceived, auction.auctionID => price)
-                      auction.payments[buyer.id,seller.id] = price
-                      push!(auction.sBids, Dict(seller.id => price))
-                      push!(auction.bBids, Dict(buyer.id => price))
-                      auction.rounds = 1
-              end
-      end
+    #STACK MODEL
+    StackModelAuction(s, auction)
+
+    for a in auction.winners
+        a.reducedGraph.weights[auction.road.bNode, auction.road.fNode] = Inf
+        push!(a.bannedRoads, auction.road)
+        SetShortestPath!(a, s.network)
+        SetAlternatePath!(a)
+    end
+    #END OF STACK MODEL
+
+    # h = HungarianAuction(s,auction)
+    #  if h != nothing
+    #           for agreement in h
+    #                   buyer = agreement[1]
+    #                   seller = agreement[2]
+    #                   price = agreement[3]
+    #                   println("Agent #$(agreement[2].id) is bought off by Agent #$(agreement[1].id) for \$$(agreement[3])")
+    #                   seller.reducedGraph.weights[auction.road.bNode, auction.road.fNode] = Inf
+    #                   push!(seller.bannedRoads, auction.road)
+    #                   SetShortestPath!(seller, s.network)
+    #                   SetAlternatePath!(seller)
+    #                   push!(buyer.moneySpent, auction.auctionID => price )
+    #                   push!(seller.moneyReceived, auction.auctionID => price)
+    #                   auction.payments[buyer.id,seller.id] = price
+    #                   push!(auction.sBids, Dict(seller.id => price))
+    #                   push!(auction.bBids, Dict(buyer.id => price))
+    #                   auction.rounds = 1
+    #           end
+    #   end
 end
 
 "-------------------------------------------------------------------------"
@@ -1211,7 +1214,7 @@ function CalculateEvaluations(nw::Network, subj_road::Road, buyer::Agent, seller
 
     buyer_mr = GetMR(buyer, subj_road, t, length(subj_road.agents))
     value =  buyer_mr * fract
-#    println("Agent $(buyer.id) values agent $(seller.id) at $value, with his MR = $buyer_mr. They will spend $t_both s on the same road out of $(subj_road.ttime) s needed for buyer to traverse road.")
+    println("Agent $(buyer.id) values agent $(seller.id) at $value, with his MR = $buyer_mr. They will spend $t_both s on the same road out of $(subj_road.ttime) s needed for buyer to traverse road.")
     return value
 end
 
@@ -1328,15 +1331,15 @@ function StackModelAuction(s::Simulation, au::Auction)
 end
 
 function SaveSim(sim::Simulation, file::String)::Bool
-    f = open("/Users/arashdehghan/Desktop/RBM/results/" * file * ".sim", "w")
+    f = open(".\\results\\simulations\\" * file * ".sim", "w")
     serialize(f, sim)
     close(f)
-    AddRegistry("File successfully saved as " * "/Users/arashdehghan/Desktop/RBM/results/" * file * ".sim", true)
+    AddRegistry("File successfully saved as " * "\\results\\simulations\\" * file * ".sim", true)
     return true
 end
 
 function LoadSim(file::String)::Simulation
-    f = open("/Users/arashdehghan/Desktop/RBM/results/" * file * ".sim", "r")
+    f = open(".\\results\\simulations\\" * file * ".sim", "r")
     sim = deserialize(f)
     close(f)
 

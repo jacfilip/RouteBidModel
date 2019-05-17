@@ -14,6 +14,9 @@ using GraphPlot
 using Plots
 using SparseArrays
 using Serialization
+using PaddedViews
+using RecursiveArrayTools
+
 
 export Network
 export Simulation
@@ -44,11 +47,11 @@ SetSpawnAndDestPts!(nw, GetNodesOutsideRadius(nw,(-2000.,-2000.),4000.), GetNode
 
 sim = Simulation(nw, 75 * 60, maxAgents = 4000, dt = 10.0, initialAgents = 500, auctions = true)
 
-sim = LoadSim("sim_stack_4k_10dt_500ini_t=180")
+sim = LoadSim("sim_stack_4k_10dt_500ini_t=1910_before_auction")
 
-@time RunSim(sim)
+@time RunSim(sim, 20)
 
-SaveSim(sim, "sim_stack_4k_10dt_500ini_t=310")
+SaveSim(sim, "sim_stack_4k_10dt_500ini_t=1910_before_auction")
 
 CSV.write(raw".\results\history.csv", sim.simData)
 CSV.write(raw".\results\roadInfo.csv", sim.roadInfo)
@@ -58,5 +61,12 @@ CSV.write(raw".\results\auctions.csv", DumpAuctionsInfo(sim))
 CSV.write(raw".\results\finished.csv", DumpFinishedAgents(sim))
 writedlm(raw".\results\log.txt", simLog, "\n")
 
+# using DataFrames, Query
+# q1 = @from i in sim.roadInfo begin
+#      @where i.k >= 10 && (i.k / i.k_max) >= 0.8
+#      @select {i.iter, i.bNode, i.fNode, i.k, i.k_max}
+#      @collect DataFrame
+#  end
+# CSV.write(raw".\results\roadInfo.csv", q1)
 
 end
