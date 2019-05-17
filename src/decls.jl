@@ -1125,7 +1125,7 @@ function HungarianAuction(s::Simulation, auction::Auction)
             push!(final_sellers,(seller,CalculateCostDifference(seller)))
         end
 
-        final_buyers = CreateBuyersMatrix(buyers,sellers,s)
+        final_buyers = CreateBuyersMatrix(buyers,sellers,s,auction.road)
         payoff_matrix = CreatePayoffMatrix(final_buyers,final_sellers)
         VA = VectorOfArray(payoff_matrix)
         arr = convert(Array,VA)
@@ -1173,18 +1173,54 @@ function SplitBuyersAndSellers(s::Simulation, agents::Array{Agent})
     return buyers, sellers
 end
 
-function CalculateEvaluations(buyer::Agent,seller::Agent)
-    value = rand(Uniform(0.01,0.2))
-    value = round(value,digits = 2)
+function CalculateEvaluations(nw::Network, subj_road::Road, buyer::Agent, seller::Agent, t::Real)
+    # value = rand(Uniform(0.01,0.2))
+    # value = round(value,digits = 2)
+
+    if buyer.atRoad != nothing
+        t_buyer = buyer.atRoad.ttime * (buyer.atRoad.length - buyer.roadPosition) / buyer.atRoad.length
+    else
+        nxtRoad = GetRoadByNodes(nw, buyer.atNode.nodeID, buyer.bestRoute[1])
+        t_buyer = nxtRoad.ttime
+    end
+
+    if seller.atRoad != nothing
+        t_seller = seller.atRoad.ttime * (seller.atRoad.length - seller.roadPosition) / seller.atRoad.length
+    else
+        nxtRoad = GetRoadByNodes(nw, seller.atNode.nodeID, seller.bestRoute[1])
+        t_seller = nxtRoad.ttime
+    end
+
+    t_both = 0
+    if t_buyer < t_seller
+        return 0
+    else
+        dt = t_buyer - t_seller
+        dist_seller = subj_road.curVelocity * dt
+        if dist_seller >= subj_road.length
+            return 0
+        else
+            t_both = (subj_road.length - dist_seller) / subj_road.curVelocity
+            fract = t_both / (subj_road.ttime)
+
+            if fract > 1 || fract < 0
+                println("Fraction time $fract is not between 0 and 1")
+            end
+        end
+    end
+
+    buyer_mr = GetMR(buyer, subj_road, t, length(subj_road.agents))
+    value =  buyer_mr * fract
+#    println("Agent $(buyer.id) values agent $(seller.id) at $value, with his MR = $buyer_mr. They will spend $t_both s on the same road out of $(subj_road.ttime) s needed for buyer to traverse road.")
     return value
 end
 
-function CreateBuyersMatrix(buyers::Array{Agent},sellers::Array{Agent},s::Simulation)
+function CreateBuyersMatrix(buyers::Array{Agent},sellers::Array{Agent},s::Simulation, r::Road)
     final_buyers = Array{Float64}[]
     for buyer in buyers
         templist = Float64[]
         for seller in sellers
-            push!(templist,CalculateEvaluations(buyer,seller))
+            push!(templist,CalculateEvaluations(s.network, r, buyer, seller, s.timeElapsed))
         end
         push!(final_buyers,templist)
     end
