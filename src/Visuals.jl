@@ -22,7 +22,7 @@ function OVAGraph(map::OpenStreetMapX.OSMData, mData::MapData, a::Agent)
     o_info = "Agent # $(a.id)\n<BR>"*
             "Length: $(length(a.origRoute)) nodes\n<br>" *
             "From: Node $(a.origRoute[1])\n<br>" *
-            "To: Node $(a.origRoute[end-1])"
+            "To: Node $(a.origRoute[end])"
     t_info = "Agent $(a.id)\n<BR>"*
             "Length: $(length(a.travelledRoute)) nodes\n<br>" *
             "From: Node $(a.travelledRoute[1])\n<br>" *
@@ -57,11 +57,11 @@ function GraphAgents(map::OpenStreetMapX.OSMData, mData::MapData, agents::Array{
     m = flm.Map()
 
     for n = 1:min(length(agents),10)
-        LL = GetLLOfRoute(map,mData,agents[n].travelledRoute[1:end-1])
+        LL = GetLLOfRoute(map,mData,agents[n].travelledRoute[1:end])
         info = "Agent # $(agents[n].id)\n<BR>"*
                 "Length: $(length(agents[n].travelledRoute)) nodes\n<br>" *
                 "From: Node $(agents[n].travelledRoute[1])\n<br>" *
-                "To: Node $(agents[n].travelledRoute[end-1])\n<br>" *
+                "To: Node $(agents[n].travelledRoute[end])\n<br>" *
                 "Time Elapsed $(agents[n].arrivalTime)"
         flm.PolyLine(
                 LL,
