@@ -17,7 +17,7 @@ auctionsAtOnceMax = 5
 muteRegistering = false
 simLog = Vector{String}()
 
-saveEach = 100  #in iterations
+saveEach = 90  #in iterations
 
 path = "maps"
 file = "buffaloF.osm"
@@ -52,7 +52,7 @@ mutable struct Road
     r.fNode = out;
     r.lanes = lanes;
     r.length = len;
-    r.vMax = vel;       #ToDo: retrieve from osm
+    r.vMax = vel;
     r.vMin = 1. /3.6;
     r.agents = Vector{Int}();
     r.capacity = ceil(r.length / (avgCarLen + headway)) * r.lanes;
@@ -655,6 +655,17 @@ function EstimateTime(n::Network, start::Int, dest::Int)::Real
     return ttot
 end
 
+function EstimateTimeQuick(n::Network, start::Int, route::Vector{Int})::Real
+    ttot = 0.
+    prev = start
+    for nxt in route
+        ttot += GetRoadByNodes(n, prev, nxt).ttime
+        prev = nxt
+    end
+
+    return ttot
+end
+
 function GetVoT(a::Agent, t::Real)::Real
     a.spareTime = (a.requiredArrivalTime - (t + a.timeEstim))
     return minimum([maximum([a.VoT_base - a.VoT_dev * a.spareTime / a.timeEstim, 0.3 * a.VoT_base]), 3 * a.VoT_base])
@@ -911,11 +922,11 @@ function RunSim(s::Simulation, runTime::Int = 0)::Bool
 
         DumpRoadsInfo(s)
 
+        s.timeElapsed += s.timeStep
+
         if (s.iter % saveEach) == 0
             SaveSim(s, "sim_stack_4k_10dt_500ini_t=" * string(Int(floor(s.timeElapsed))))
         end
-
-        s.timeElapsed += s.timeStep
 
         if s.iter > s.maxIter return false end
     end
@@ -958,7 +969,7 @@ function GrabAuctionParticipants(nw::Network, r::Road)::Vector{Agent}
             end
             if length(agent.bestRoute) >= 2
                 #println("road fNode: $(r.fNode), agent $(agent.id): bestroute: $(agent.bestRoute[1]) -> $(agent.bestRoute[2])")
-                if agent.bestRoute[2] == r.fNode && agent.isSmart && !(road in agent.bannedRoads)
+                if agent.bestRoute[2] == r.fNode && agent.isSmart && !(r in agent.bannedRoads)
                     push!(players,agent)
                 end
                 if agent.bestRoute[2] != r.fNode
