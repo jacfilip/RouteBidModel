@@ -16,14 +16,16 @@ function OVAGraph(map::OpenStreetMapX.OSMData, mData::MapData, a::Agent)
     cmap = matplotlib_cm.get_cmap("prism")
     m = flm.Map()
 
-    o_LL = GetLLOfRoute(map,mData,a.origRoute[1:end-1])
+    o_LL = GetLLOfRoute(map,mData,a.origRoute[1:end])
     t_LL = GetLLOfRoute(map,mData,a.travelledRoute[1:end])
 
-    o_info = "Agent # $(a.id)\n<BR>"*
+    o_info = "Original Route\n<BR>"*
+            "Agent # $(a.id)\n<BR>"*
             "Length: $(length(a.origRoute)) nodes\n<br>" *
             "From: Node $(a.origRoute[1])\n<br>" *
             "To: Node $(a.origRoute[end])"
-    t_info = "Agent $(a.id)\n<BR>"*
+    t_info = "Route Travelled\n<BR>"*
+            "Agent $(a.id)\n<BR>"*
             "Length: $(length(a.travelledRoute)) nodes\n<br>" *
             "From: Node $(a.travelledRoute[1])\n<br>" *
             "To: Node $(a.travelledRoute[end])"
@@ -32,13 +34,13 @@ function OVAGraph(map::OpenStreetMapX.OSMData, mData::MapData, a::Agent)
             o_LL,
             popup=o_info,
             tooltip=o_info,
-            color=matplotlib_colors.to_hex(cmap(1))
+            color="blue"
         ).add_to(m)
     flm.PolyLine(
             t_LL,
             popup=t_info,
             tooltip=t_info,
-            color=matplotlib_colors.to_hex(cmap(2))
+            color="red"
         ).add_to(m)
 
     MAP_BOUNDS = [(mData.bounds.min_y,mData.bounds.min_x),(mData.bounds.max_y,mData.bounds.max_x)]
@@ -55,6 +57,8 @@ function GraphAgents(map::OpenStreetMapX.OSMData, mData::MapData, agents::Array{
     matplotlib_colors = pyimport("matplotlib.colors")
     cmap = matplotlib_cm.get_cmap("prism")
     m = flm.Map()
+
+    shuffle!(agents)
 
     for n = 1:min(length(agents),10)
         LL = GetLLOfRoute(map,mData,agents[n].travelledRoute[1:end])
