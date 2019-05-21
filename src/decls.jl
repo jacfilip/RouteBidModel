@@ -8,16 +8,16 @@ bigNum = 1000000
 headway = 0.5
 avgCarLen = 5.
 
-auctionTimeInterval = 60.0
-auctionMinCongestion = 0.8
-auctionMinParticipants = 10
-auctionMinAgentsOnRoad = 10
+auctionTimeInterval = 20.0
+auctionMinCongestion = 0.5
+auctionMinParticipants = 5
+auctionMinAgentsOnRoad = 5
 auctionsAtOnceMax = 5
 
 muteRegistering = false
 simLog = Vector{String}()
 
-saveEach = 90  #in iterations
+saveEach = 60  #in iterations
 
 path = "maps"
 file = "buffaloF.osm"
@@ -477,6 +477,15 @@ function GetAgentByID(n::Network, id::Int)::Union{Agent,Nothing}
     return nothing
 end
 
+function GetAgentdByID_2(agents::Array{Agent}, id::Int)::Union{Agent,Nothing}
+    for a in agents
+        if a.id == id
+            return a
+        end
+    end
+    return nothing
+end
+
 function GetIntersectionCoords(n::Network)::DataFrame
     df = DataFrame(first_X = Real[], first_Y = Real[], second_X = Real[], second_Y = Real[])
     for p in GetIntersectionCoords(n)
@@ -518,6 +527,16 @@ function GetNodesOutsideRadius(n::Network, pt::Tuple{Real,Real}, r::Real)::Vecto
     return v
 end
 
+function GetNodesBetween(n::Network, pt::Tuple{Real,Real}, r::Real, R::Real)::Vector{Int}
+    v = Vector{Int}()
+    for i in 1:length(n.intersections)
+        if (EuclideanNorm(pt, (n.intersections[i].posX, n.intersections[i].posY)) > r) && (EuclideanNorm(pt, (n.intersections[i].posX, n.intersections[i].posY)) < R)
+            push!(v, i)
+        end
+    end
+    return v
+end
+
 function CanFitAtRoad(a::Agent, r::Road)::Bool
     return length(r.agents) < r.capacity #Check theres room on road for agent
 end
@@ -553,6 +572,7 @@ function SpawnAgents(s::Simulation, dt::Real)
     k = minimum([maximum([rand(Distributions.Poisson(λ * dt)), 0]), s.maxAgents - s.network.agentCntr])
     for i in 1:k
         SpawnAgentAtRandom(s.network, s.timeElapsed)
+        SetWeights!(s.network.agents[end], s);
     end
 end
 
@@ -636,7 +656,7 @@ function SetShortestPath!(a::Agent, nw::Network)::Real
             push!(a.bestRoute, nextNode)
         end
         pop!(a.bestRoute)
-        a.timeEstim = EstimateTime(nw, nxtNode, a.destNode.nodeID)
+        a.timeEstim = EstimateTimeQuick(nw, a.bestRoute)
         return a.bestRouteCost = dist
     else
         return Inf
@@ -724,10 +744,17 @@ function EstimateTime(n::Network, start::Int, dest::Int)::Real
     return ttot
 end
 
-function EstimateTimeQuick(n::Network, start::Int, route::Vector{Int})::Real
+function EstimateTimeQuick(n::Network, route::Vector{Int})::Real
     ttot = 0.
-    prev = start
-    for nxt in route
+    if length(route) < 2
+        return 0
+    end
+
+    prev = route[1]
+    for nxt in route[2:end]
+        if nxt == 0 || prev == 0
+            continue
+        end
         ttot += GetRoadByNodes(n, prev, nxt).ttime
         prev = nxt
     end
@@ -772,7 +799,7 @@ function ReachedIntersection(a::Agent, s::Simulation) #Takes the agent and netwo
                 push!(a.travelledRoute,a.atNode.nodeID)
             end
         end
-        SetWeights!(a, s) #Reset weight on edges for agent network
+        #SetWeights!(a, s) #Reset weight on edges for agent network
         if SetShortestPath!(a, s.network) == Inf
             println("Agent $(a.id) has a path of infinity. That's not good news!")
             return
@@ -962,7 +989,7 @@ function RunSim(s::Simulation, runTime::Int = 0)::Bool
             return false
         end
         s.iter += 1 #Add new number of iteration
-        AddRegistry("[$(round(s.timeElapsed/s.timeMax*100)) %] Iter #$(s.iter), time: $(s.timeElapsed), agents: $(s.network.agentCntr), agents total: $(s.network.agentIDmax)", true)
+        AddRegistry("[$(round(s.timeElapsed/s.timeMax*100, digits=1)) %] Iter #$(s.iter), time: $(s.timeElapsed), agents: $(s.network.agentCntr), agents total: $(s.network.agentIDmax)", true)
 
         for r in s.network.roads #For each road in the network, set the velocity of the road based on congestion, etc.
             RecalculateRoad!(r)
@@ -994,7 +1021,7 @@ function RunSim(s::Simulation, runTime::Int = 0)::Bool
         s.timeElapsed += s.timeStep
 
         if (s.iter % saveEach) == 0
-            SaveSim(s, "sim_stack_4k_10dt_500ini_t=" * string(Int(floor(s.timeElapsed))))
+            SaveSim(s, "sim_stack_1k_10dt_1000ini_t=" * string(Int(floor(s.timeElapsed))))
         end
 
         if s.iter > s.maxIter return false end
@@ -1085,6 +1112,12 @@ end
 
 function CommenceBidding(s::Simulation, auction::Auction)
     # println(length(auction.participants))
+
+    for a in auction.participants
+        SetWeights!(a, s)
+        SetShortestPath!(a, s.network)
+        SetAlternatePath!(a)
+    end
 
     #STACK MODEL
     StackModelAuction(s, auction)
@@ -1256,7 +1289,8 @@ function StackModelAuction(s::Simulation, au::Auction)
     while true
         #recalculate MRs and sale offers for all the reamining participants
         println("Auction: $(au.auctionID)")
-        all_sBids = Dict([(a.id, (a.alterRouteCost - a.bestRouteCost)) for a in remaining_agents[getfield.(remaining_agents, :alterRouteCost) .> getfield.(remaining_agents, :bestRouteCost)]])
+        sellerMargin = 0.1
+        all_sBids = Dict([(a.id, (1 + sellerMargin)*(a.alterRouteCost - a.bestRouteCost)) for a in remaining_agents[getfield.(remaining_agents, :alterRouteCost) .> getfield.(remaining_agents, :bestRouteCost)]])
         all_MRs = Dict([(a.id, GetMR(a, au.road, au.time, maximum([length(au.road.agents) + 1 - au.rounds, 1]))) for a in remaining_agents])
 
         #sort offers in ascending order
@@ -1338,8 +1372,24 @@ function SaveSim(sim::Simulation, file::String)::Bool
     return true
 end
 
+function SaveSim2(sim::Simulation, path::String, file::String)::Bool
+    f = open(path * file * ".sim", "w")
+    serialize(f, sim)
+    close(f)
+    AddRegistry("File successfully saved as " * path * file * ".sim", true)
+    return true
+end
+
 function LoadSim(file::String)::Simulation
     f = open(".\\results\\simulations\\" * file * ".sim", "r")
+    sim = deserialize(f)
+    close(f)
+
+    return sim
+end
+
+function LoadSim2(path::String, file::String)::Simulation
+    f = open(path * file * ".sim", "r")
     sim = deserialize(f)
     close(f)
 
