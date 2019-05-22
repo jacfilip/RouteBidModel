@@ -19,7 +19,7 @@ auctionsAtOnceMax = 3
 muteRegistering = false
 simLog = Vector{String}()
 
-saveEach = 180  #in iterations
+saveEach = Inf  #in iterations
 
 path = "maps"
 file = "buffaloF.osm"
@@ -1084,7 +1084,6 @@ function GrabAuctionParticipants(nw::Network, r::Road, s::Simulation)::Vector{Ag
     for road in nw.intersections[r.bNode].inRoads
         for a in road.agents
             agent = GetAgentByID(nw, a)
-            #if SetShortestPath!(agent, nw) > SetAlternatePath!(agent)
             SetAlternatePath!(agent)
             if (agent.bestRouteCost = CalculateRouteCost(agent, s, agent.bestRoute)) > (agent.alterRouteCost = CalculateRouteCost(agent, s, agent.alterRoute))
                 #AddRegistry("Oops! The best route has higher cost than alternative. Something is not right.", true)
@@ -1095,9 +1094,9 @@ function GrabAuctionParticipants(nw::Network, r::Road, s::Simulation)::Vector{Ag
                 if ( (agent.atNode != nothing ? agent.bestRoute[1] : agent.bestRoute[2]) == r.fNode  && agent.isSmart && !(r in agent.bannedRoads))
                     push!(players,agent)
                 end
-                if agent.bestRoute[2] != r.fNode && agent.bestRoute[1] != r.fNode
-                    AddRegistry("Auction road is $(r.bNode)  $(r.fNode), but agent's $(agent.id) bestroute is $(agent.bestRoute[1]) -> $(agent.bestRoute[2])", true)
-                end
+                # if agent.bestRoute[2] != r.fNode && agent.bestRoute[1] != r.fNode
+                #     AddRegistry("Auction road is $(r.bNode)  $(r.fNode), but agent's $(agent.id) bestroute is $(agent.bestRoute[1]) -> $(agent.bestRoute[2])", true)
+                # end
             end
         end
     end
@@ -1145,7 +1144,6 @@ function CommenceBidding(s::Simulation, auction::Auction)
         a.reducedGraph.weights[auction.road.bNode, auction.road.fNode] = Inf
         push!(a.bannedRoads, auction.road)
         SetShortestPath!(a, s.network)
-        # SetAlternatePath!(a)
     end
     #END OF STACK MODEL
 
@@ -1308,9 +1306,10 @@ function StackModelAuction(s::Simulation, au::Auction)
     while true
         #recalculate MRs and sale offers for all the reamining participants
         println("Auction: $(au.auctionID)")
-        sellerMargin = 0.1
-        all_sBids = Dict([(a.id, (1 + sellerMargin)*(a.alterRouteCost - a.bestRouteCost)) for a in remaining_agents[getfield.(remaining_agents, :alterRouteCost) .> getfield.(remaining_agents, :bestRouteCost)]])
-        all_MRs = Dict([(a.id, GetMR(a, au.road, au.time, maximum([length(au.road.agents) + 1 - au.rounds, 1]))) for a in remaining_agents])
+        sellerMargin = 0.20
+        buyerMargin = 0.20
+        all_sBids = Dict([(a.id, (1 + sellerMargin) * (a.alterRouteCost - a.bestRouteCost)) for a in remaining_agents[getfield.(remaining_agents, :alterRouteCost) .> getfield.(remaining_agents, :bestRouteCost)]])
+        all_MRs = Dict([(a.id, (1 - buyerMargin) * GetMR(a, au.road, au.time, maximum([length(au.road.agents) + 1 - au.rounds, 1]))) for a in remaining_agents])
 
         #sort offers in ascending order
         MRsOrd = sort(collect(all_MRs), by = x -> x[2])
