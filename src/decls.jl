@@ -8,16 +8,18 @@ bigNum = 1000000
 headway = 0.5
 avgCarLen = 5.
 
-auctionTimeInterval = 20.0
-auctionMinCongestion = 0.5
-auctionMinParticipants = 5
-auctionMinAgentsOnRoad = 5
-auctionsAtOnceMax = 5
+auctionTimeInterval = 60.0
+auctionFirstAt = 30 * 60
+auctionLastAt = 60 * 60
+auctionMinCongestion = 0.9
+auctionMinParticipants = 15
+auctionMinAgentsOnRoad = 15
+auctionsAtOnceMax = 3
 
 muteRegistering = false
 simLog = Vector{String}()
 
-saveEach = 60  #in iterations
+saveEach = 180  #in iterations
 
 path = "maps"
 file = "buffaloF.osm"
@@ -456,6 +458,7 @@ function GetRoadByNodes(n::Network, first::Int, second::Int)::Union{Road,Nothing
             end
         end
     end
+    println("Cannot find road: [$first, $second]")
     return nothing
 end
 
@@ -793,6 +796,7 @@ function ReachedIntersection(a::Agent, s::Simulation) #Takes the agent and netwo
         DestroyAgent(a, s.network) #Destroy the agent
     else
         if isempty(a.travelledRoute)
+            SetShortestPath!(a, s.network)
             push!(a.travelledRoute,a.atNode.nodeID)
         else
             if a.travelledRoute[end] != a.atNode.nodeID
@@ -800,15 +804,17 @@ function ReachedIntersection(a::Agent, s::Simulation) #Takes the agent and netwo
             end
         end
         #SetWeights!(a, s) #Reset weight on edges for agent network
-        if SetShortestPath!(a, s.network) == Inf
-            println("Agent $(a.id) has a path of infinity. That's not good news!")
-            return
-        else
+        # if SetShortestPath!(a, s.network) == Inf
+        #     println("Agent $(a.id) has a path of infinity. That's not good news!")
+        #     return
+        # else
             if isempty(a.origRoute)
                 cop = deepcopy(a.bestRoute)
                 oroute = pushfirst!(cop,a.atNode.nodeID)
                 a.origRoute = oroute
             end
+
+            #a.timeEstim = EstimateTimeQuick(nw, a.bestRoute)
             nextRoad = GetRoadByNodes(s.network, a.atNode.nodeID, a.bestRoute[1]) #Get the road agent is turning on
 
             if (CanFitAtRoad(a, nextRoad)) #Check that he fits on the road
@@ -819,10 +825,11 @@ function ReachedIntersection(a::Agent, s::Simulation) #Takes the agent and netwo
                 a.atRoad = nextRoad #Set agent on new road
                 a.roadPosition = 0.0 #Set his position on road to zero
                 a.atNode = nothing #Agent no longer at node
+                popfirst!(a.bestRoute)
             else
                 #println("CANT FIT TO ROAD!!!! for agent $(a.id)\nThe road length $(nextRoad.length)\nThe road capacity $(nextRoad.capacity)\nThe number of agents currently on that road $(length(nextRoad.agents))\n")
             end
-        end
+        # end
     end
 end
 
@@ -989,7 +996,7 @@ function RunSim(s::Simulation, runTime::Int = 0)::Bool
             return false
         end
         s.iter += 1 #Add new number of iteration
-        AddRegistry("[$(round(s.timeElapsed/s.timeMax*100, digits=1)) %] Iter #$(s.iter), time: $(s.timeElapsed), agents: $(s.network.agentCntr), agents total: $(s.network.agentIDmax)", true)
+        AddRegistry("[$(round(s.timeElapsed/s.timeMax*100, digits=1))%] Iter #$(s.iter), time: $(s.timeElapsed), agents: $(s.network.agentCntr), agents total: $(s.network.agentIDmax)", true)
 
         for r in s.network.roads #For each road in the network, set the velocity of the road based on congestion, etc.
             RecalculateRoad!(r)
@@ -1007,7 +1014,7 @@ function RunSim(s::Simulation, runTime::Int = 0)::Bool
             MakeAction!(a, s) #Do action
         end
 
-        if s.enableAuctions
+        if s.enableAuctions && s.timeElapsed >= auctionFirstAt && s.timeElapsed <= auctionLastAt
             if  s.timeElapsed - s.lastAuctionTime >= auctionTimeInterval
                 s.lastAuctionTime = s.timeElapsed
                 for au in GrabAuctionPlaces(s)
@@ -1021,7 +1028,7 @@ function RunSim(s::Simulation, runTime::Int = 0)::Bool
         s.timeElapsed += s.timeStep
 
         if (s.iter % saveEach) == 0
-            SaveSim(s, "sim_stack_1k_10dt_1000ini_t=" * string(Int(floor(s.timeElapsed))))
+            SaveSim(s, "sim_stack_2k_10dt_t=" * string(Int(floor(s.timeElapsed))))
         end
 
         if s.iter > s.maxIter return false end
@@ -1055,21 +1062,41 @@ function IsRoutePossible(n::Network, startNode::Int64, endNode::Int64)
     end
 end
 
-function GrabAuctionParticipants(nw::Network, r::Road)::Vector{Agent}
+function CalculateRouteCost(a::Agent, s::Simulation, route::Vector{Int})::Real
+    nw = s.network
+    if length(route) < 2
+        return 0
+    end
+
+    cost = 0
+    for i in 2:length(route)
+        r = GetRoadByNodes(nw, route[i - 1], route[i])
+        r.ttime = r.length / r.curVelocity
+        cost += r in a.bannedRoads ? Inf : r.ttime * GetVoT(a, s.timeElapsed) + r.length * a.CoF
+    end
+
+    return cost
+end
+
+function GrabAuctionParticipants(nw::Network, r::Road, s::Simulation)::Vector{Agent}
     players = Agent[]
+
     for road in nw.intersections[r.bNode].inRoads
         for a in road.agents
             agent = GetAgentByID(nw, a)
-            if SetShortestPath!(agent, nw) > SetAlternatePath!(agent)
-                AddRegistry("Oops! The best route has higher cost than alternative. Something is not right.", true)
+            #if SetShortestPath!(agent, nw) > SetAlternatePath!(agent)
+            SetAlternatePath!(agent)
+            if (agent.bestRouteCost = CalculateRouteCost(agent, s, agent.bestRoute)) > (agent.alterRouteCost = CalculateRouteCost(agent, s, agent.alterRoute))
+                #AddRegistry("Oops! The best route has higher cost than alternative. Something is not right.", true)
+                continue
             end
             if length(agent.bestRoute) >= 2
                 #println("road fNode: $(r.fNode), agent $(agent.id): bestroute: $(agent.bestRoute[1]) -> $(agent.bestRoute[2])")
-                if agent.bestRoute[2] == r.fNode && agent.isSmart && !(r in agent.bannedRoads)
+                if ( (agent.atNode != nothing ? agent.bestRoute[1] : agent.bestRoute[2]) == r.fNode  && agent.isSmart && !(r in agent.bannedRoads))
                     push!(players,agent)
                 end
-                if agent.bestRoute[2] != r.fNode
-                    AddRegistry("Auction road is $(r.bNode)  $(r.fNode), but agent's $(agent.id) bestroute is $(agent.bestRoute[1]) -> $(agent.bestRoute[2])")
+                if agent.bestRoute[2] != r.fNode && agent.bestRoute[1] != r.fNode
+                    AddRegistry("Auction road is $(r.bNode)  $(r.fNode), but agent's $(agent.id) bestroute is $(agent.bestRoute[1]) -> $(agent.bestRoute[2])", true)
                 end
             end
         end
@@ -1086,9 +1113,7 @@ function GrabAuctionPlaces(s::Simulation)::Vector{Auction}
              )
             continue
         end
-        AddRegistry("Road $(r.bNode) - $(r.fNode) is congested enough.")
-        particip = GrabAuctionParticipants(s.network, r)
-
+        particip = GrabAuctionParticipants(s.network, r, s)
         #filter out minimal congestion rate threshold
         if length(particip) >= auctionMinParticipants
             s.auctionCntr += 1
@@ -1113,12 +1138,6 @@ end
 function CommenceBidding(s::Simulation, auction::Auction)
     # println(length(auction.participants))
 
-    for a in auction.participants
-        SetWeights!(a, s)
-        SetShortestPath!(a, s.network)
-        SetAlternatePath!(a)
-    end
-
     #STACK MODEL
     StackModelAuction(s, auction)
 
@@ -1126,7 +1145,7 @@ function CommenceBidding(s::Simulation, auction::Auction)
         a.reducedGraph.weights[auction.road.bNode, auction.road.fNode] = Inf
         push!(a.bannedRoads, auction.road)
         SetShortestPath!(a, s.network)
-        SetAlternatePath!(a)
+        # SetAlternatePath!(a)
     end
     #END OF STACK MODEL
 
@@ -1333,7 +1352,6 @@ function StackModelAuction(s::Simulation, au::Auction)
             last = ΔMRs[k1] * (N - k1 + 1)
             tot_minus_last = tot - last
             α = (minS - tot_minus_last) / last
-            println("α: $(α)")
 
             maxOff = (k1 == 1 ? 0 : MRsOrd[k1 - 1][2]) + α * MRsOrd[k1][2]
 
