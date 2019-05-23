@@ -8,6 +8,22 @@ function GetLLOfRoute(map::OpenStreetMapX.OSMData, mData::MapData,route::Array{I
     return myroute
 end
 
+function GetLLOfPoint(map::OpenStreetMapX.OSMData, mData::MapData,route::Int64)
+    latitude = map.nodes[mData.n[route]].lat
+    longitude = map.nodes[mData.n[route]].lon
+    mypoint = (latitude,longitude)
+    return mypoint
+end
+
+function GrabBannedRoads(roads::Array{Road})
+    r_list = []
+    for r in roads
+        push!(r_list,[r.bNode,r.fNode])
+    end
+
+    return r_list
+end
+
 function OVAGraph(map::OpenStreetMapX.OSMData, mData::MapData, a::Agent)
 
     flm = pyimport("folium")
@@ -43,6 +59,23 @@ function OVAGraph(map::OpenStreetMapX.OSMData, mData::MapData, a::Agent)
             color="red"
         ).add_to(m)
 
+    if isempty(a.bannedRoads) == false
+        br = GrabBannedRoads(a.bannedRoads)
+        for banned_road in br
+            b_LL = GetLLOfRoute(map,mData,banned_road)
+
+            b_info = "Banned Road\n<BR>"
+
+            flm.PolyLine(
+                    b_LL,
+                    popup=b_info,
+                    tooltip=b_info,
+                    color="purple"
+                ).add_to(m)
+
+        end
+    end
+
     MAP_BOUNDS = [(mData.bounds.min_y,mData.bounds.min_x),(mData.bounds.max_y,mData.bounds.max_x)]
     flm.Rectangle(MAP_BOUNDS, color="black",weight=6).add_to(m)
     m.fit_bounds(MAP_BOUNDS)
@@ -57,8 +90,6 @@ function GraphAgents(map::OpenStreetMapX.OSMData, mData::MapData, agents::Array{
     matplotlib_colors = pyimport("matplotlib.colors")
     cmap = matplotlib_cm.get_cmap("prism")
     m = flm.Map()
-
-    shuffle!(agents)
 
     for n = 1:min(length(agents),10)
         LL = GetLLOfRoute(map,mData,agents[n].travelledRoute[1:end])
@@ -80,4 +111,36 @@ function GraphAgents(map::OpenStreetMapX.OSMData, mData::MapData, agents::Array{
     m.fit_bounds(MAP_BOUNDS)
     m.save("AgentsGraph.html")
     println("File Saved!")
+end
+
+
+function GraphAuctionLocations(map::OpenStreetMapX.OSMData, mData::MapData, aucs::Array{Auction})
+    flm = pyimport("folium")
+    matplotlib_cm = pyimport("matplotlib.cm")
+    matplotlib_colors = pyimport("matplotlib.colors")
+    cmap = matplotlib_cm.get_cmap("prism")
+    m = flm.Map()
+
+    for auction in aucs
+        location = GetLLOfPoint(map,mData,auction.road.bNode)
+        info = "Node $(auction.road.bNode)\n<br>"*
+               "Auction ID $(auction.auctionID)\n<br>"*
+               "Number of Agents Bought Off: $(length(auction.sBids))"
+        flm.Circle(
+         location,
+         popup=info,
+         tooltip=info,
+         radius=50,
+         color="crimson",
+         weight=0.1,
+         fill=true,
+         fill_color="crimson"
+      ).add_to(m)
+    end
+    MAP_BOUNDS = [(mData.bounds.min_y,mData.bounds.min_x),(mData.bounds.max_y,mData.bounds.max_x)]
+    flm.Rectangle(MAP_BOUNDS, color="black",weight=6).add_to(m)
+    m.fit_bounds(MAP_BOUNDS)
+    m.save("AuctionsGraph.html")
+    println("File Saved!")
+
 end
