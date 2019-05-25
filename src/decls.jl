@@ -8,13 +8,14 @@ bigNum = 1000000
 headway = 0.5
 avgCarLen = 5.
 
-auctionTimeInterval = 20.0
+
+auctionTimeInterval = 60.0
 auctionFirstAt = 30 * 60
-auctionLastAt = 60 * 90
-auctionMinCongestion = 0.5
-auctionMinParticipants = 10
-auctionMinAgentsOnRoad = 10
-auctionsAtOnceMax = 8
+auctionLastAt = 60 * 60
+auctionMinCongestion = 0.9
+auctionMinParticipants = 15
+auctionMinAgentsOnRoad = 15
+auctionsAtOnceMax = 3
 
 muteRegistering = false
 simLog = Vector{String}()
@@ -1028,7 +1029,7 @@ function RunSim(s::Simulation, runTime::Int = 0)::Bool
         s.timeElapsed += s.timeStep
 
         if (s.iter % saveEach) == 0
-            SaveSim(s, "sim_hungarian_2k_10dt_t=" * string(Int(floor(s.timeElapsed))))
+            SaveSim(s, "sim_stack_2k_10dt_t=" * string(Int(floor(s.timeElapsed))))
         end
 
         if s.iter > s.maxIter return false end
@@ -1084,7 +1085,6 @@ function GrabAuctionParticipants(nw::Network, r::Road, s::Simulation)::Vector{Ag
     for road in nw.intersections[r.bNode].inRoads
         for a in road.agents
             agent = GetAgentByID(nw, a)
-            #if SetShortestPath!(agent, nw) > SetAlternatePath!(agent)
             SetAlternatePath!(agent)
             if (agent.bestRouteCost = CalculateRouteCost(agent, s, agent.bestRoute)) > (agent.alterRouteCost = CalculateRouteCost(agent, s, agent.alterRoute))
                 #AddRegistry("Oops! The best route has higher cost than alternative. Something is not right.", true)
@@ -1094,9 +1094,6 @@ function GrabAuctionParticipants(nw::Network, r::Road, s::Simulation)::Vector{Ag
                 #println("road fNode: $(r.fNode), agent $(agent.id): bestroute: $(agent.bestRoute[1]) -> $(agent.bestRoute[2])")
                 if ( (agent.atNode != nothing ? agent.bestRoute[1] : agent.bestRoute[2]) == r.fNode  && agent.isSmart && !(r in agent.bannedRoads))
                     push!(players,agent)
-                end
-                if agent.bestRoute[2] != r.fNode && agent.bestRoute[1] != r.fNode
-                    # AddRegistry("Auction road is $(r.bNode)  $(r.fNode), but agent's $(agent.id) bestroute is $(agent.bestRoute[1]) -> $(agent.bestRoute[2])", true)
                 end
             end
         end
@@ -1143,35 +1140,34 @@ function CommenceBidding(s::Simulation, auction::Auction)
     # println(length(auction.participants))
 
     #STACK MODEL
-    # StackModelAuction(s, auction)
-    #
-    # for a in auction.winners
-    #     a.reducedGraph.weights[auction.road.bNode, auction.road.fNode] = Inf
-    #     push!(a.bannedRoads, auction.road)
-    #     SetShortestPath!(a, s.network)
-    #     # SetAlternatePath!(a)
-    # end
+    StackModelAuction(s, auction)
+
+    for a in auction.winners
+        a.reducedGraph.weights[auction.road.bNode, auction.road.fNode] = Inf
+        push!(a.bannedRoads, auction.road)
+        SetShortestPath!(a, s.network)
+    end
     #END OF STACK MODEL
 
-    h = HungarianAuction(s,auction)
-     if h != nothing
-              for agreement in h
-                      buyer = agreement[1]
-                      seller = agreement[2]
-                      price = agreement[3]
-                      println("Agent #$(agreement[2].id) is bought off by Agent #$(agreement[1].id) for \$$(agreement[3])")
-                      seller.reducedGraph.weights[auction.road.bNode, auction.road.fNode] = Inf
-                      push!(seller.bannedRoads, auction.road)
-                      SetShortestPath!(seller, s.network)
-                      SetAlternatePath!(seller)
-                      push!(buyer.moneySpent, auction.auctionID => price )
-                      push!(seller.moneyReceived, auction.auctionID => price)
-                      auction.payments[buyer.id,seller.id] = price
-                      push!(auction.sBids, Dict(seller.id => price))
-                      push!(auction.bBids, Dict(buyer.id => price))
-                      auction.rounds = 1
-              end
-      end
+    # h = HungarianAuction(s,auction)
+    #  if h != nothing
+    #           for agreement in h
+    #                   buyer = agreement[1]
+    #                   seller = agreement[2]
+    #                   price = agreement[3]
+    #                   println("Agent #$(agreement[2].id) is bought off by Agent #$(agreement[1].id) for \$$(agreement[3])")
+    #                   seller.reducedGraph.weights[auction.road.bNode, auction.road.fNode] = Inf
+    #                   push!(seller.bannedRoads, auction.road)
+    #                   SetShortestPath!(seller, s.network)
+    #                   SetAlternatePath!(seller)
+    #                   push!(buyer.moneySpent, auction.auctionID => price )
+    #                   push!(seller.moneyReceived, auction.auctionID => price)
+    #                   auction.payments[buyer.id,seller.id] = price
+    #                   push!(auction.sBids, Dict(seller.id => price))
+    #                   push!(auction.bBids, Dict(buyer.id => price))
+    #                   auction.rounds = 1
+    #           end
+    #   end
 end
 
 "-------------------------------------------------------------------------"
@@ -1388,7 +1384,8 @@ end
 
 
 function SaveSim(sim::Simulation, file::String)::Bool
-    f = open("/Users/arashdehghan/Desktop/RouteBidModel-master/results/" * file * ".sim", "w")
+
+    f = open(".\\results\\simulations\\" * file * ".sim", "w")
     serialize(f, sim)
     close(f)
     AddRegistry("File successfully saved as " * "\\results\\simulations\\" * file * ".sim", true)
@@ -1404,7 +1401,7 @@ function SaveSim2(sim::Simulation, path::String, file::String)::Bool
 end
 
 function LoadSim(file::String)::Simulation
-    f = open("/Users/arashdehghan/Desktop/RouteBidModel-master/results/" * file * ".sim", "r")
+    f = open(".\\results\\simulations\\" * file * ".sim", "r")
     sim = deserialize(f)
     close(f)
 
