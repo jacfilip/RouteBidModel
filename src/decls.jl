@@ -8,6 +8,7 @@ bigNum = 1000000
 headway = 0.5
 avgCarLen = 5.
 
+
 auctionTimeInterval = 60.0
 auctionFirstAt = 30 * 60
 auctionLastAt = 60 * 60
@@ -988,7 +989,7 @@ end
 
 function RunSim(s::Simulation, runTime::Int = 0)::Bool
     if runTime > 0
-        s.timeMax = s.timeElapsed + runTime
+        s.timeMax = s.timeMax + runTime
     end
 
     while s.timeElapsed < s.timeMax
@@ -1094,9 +1095,6 @@ function GrabAuctionParticipants(nw::Network, r::Road, s::Simulation)::Vector{Ag
                 if ( (agent.atNode != nothing ? agent.bestRoute[1] : agent.bestRoute[2]) == r.fNode  && agent.isSmart && !(r in agent.bannedRoads))
                     push!(players,agent)
                 end
-                # if agent.bestRoute[2] != r.fNode && agent.bestRoute[1] != r.fNode
-                #     AddRegistry("Auction road is $(r.bNode)  $(r.fNode), but agent's $(agent.id) bestroute is $(agent.bestRoute[1]) -> $(agent.bestRoute[2])", true)
-                # end
             end
         end
     end
@@ -1113,10 +1111,14 @@ function GrabAuctionPlaces(s::Simulation)::Vector{Auction}
             continue
         end
         particip = GrabAuctionParticipants(s.network, r, s)
-        #filter out minimal congestion rate threshold
-        if length(particip) >= auctionMinParticipants
-            s.auctionCntr += 1
-            push!(auctions, Auction(s.auctionCntr, particip, r, s.timeElapsed))
+        buyers,sellers = SplitBuyersAndSellers(s,particip)
+
+        if length(buyers) != 0 && length(sellers) != 0
+            #filter out minimal congestion rate threshold
+            if length(particip) >= auctionMinParticipants
+                s.auctionCntr += 1
+                push!(auctions, Auction(s.auctionCntr, particip, r, s.timeElapsed))
+            end
         end
     end
 
@@ -1207,7 +1209,8 @@ function HungarianAuction(s::Simulation, auction::Auction)
 end
 
 function CalculateCostDifference(seller::Agent)
-    value = round(seller.alterRouteCost - seller.bestRouteCost,digits = 2)
+    sellerMargin = 0.20
+    value = round((1 + sellerMargin) * (seller.alterRouteCost - seller.bestRouteCost),digits = 2)
     value = value > 0.00 ? value : 0.01
     return value
 
@@ -1227,9 +1230,7 @@ function SplitBuyersAndSellers(s::Simulation, agents::Array{Agent})
 end
 
 function CalculateEvaluations(nw::Network, subj_road::Road, buyer::Agent, seller::Agent, t::Real)
-    # value = rand(Uniform(0.01,0.2))
-    # value = round(value,digits = 2)
-
+    buyerMargin = 0.20
     if buyer.atRoad != nothing
         t_buyer = buyer.atRoad.ttime * (buyer.atRoad.length - buyer.roadPosition) / buyer.atRoad.length
     else
@@ -1263,7 +1264,7 @@ function CalculateEvaluations(nw::Network, subj_road::Road, buyer::Agent, seller
     end
 
     buyer_mr = GetMR(buyer, subj_road, t, length(subj_road.agents))
-    value =  buyer_mr * fract
+    value =  (1 - buyerMargin) * buyer_mr * fract
     println("Agent $(buyer.id) values agent $(seller.id) at $value, with his MR = $buyer_mr. They will spend $t_both s on the same road out of $(subj_road.ttime) s needed for buyer to traverse road.")
     return value
 end
@@ -1381,7 +1382,9 @@ function StackModelAuction(s::Simulation, au::Auction)
     end
 end
 
+
 function SaveSim(sim::Simulation, file::String)::Bool
+
     f = open(".\\results\\simulations\\" * file * ".sim", "w")
     serialize(f, sim)
     close(f)
