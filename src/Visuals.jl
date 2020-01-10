@@ -15,6 +15,12 @@ function GetLLOfPoint(map::OpenStreetMapX.OSMData, mData::MapData,route::Int64)
     return mypoint
 end
 
+function GetLLOfPoint2(map::OpenStreetMapX.OSMData, mData::MapData,n::Int64)
+    latitude = map.nodes[n].lat
+    longitude = map.nodes[n].lon
+    mypoint = (latitude,longitude)
+end
+
 function GrabBannedRoads(roads::Array{Road})
     r_list = []
     for r in roads
@@ -143,4 +149,63 @@ function GraphAuctionLocations(map::OpenStreetMapX.OSMData, mData::MapData, aucs
     m.save("AuctionsGraph.html")
     println("File Saved!")
 
+end
+
+function GraphNodesLocations(map::OpenStreetMapX.OSMData, mData::MapData)
+    flm = pyimport("folium")
+    matplotlib_cm = pyimport("matplotlib.cm")
+    matplotlib_colors = pyimport("matplotlib.colors")
+    cmap = matplotlib_cm.get_cmap("prism")
+    m = flm.Map()
+
+    for n in keys(mData.n)
+        if !haskey(map.nodes, mData.n[n])
+            println("Node $n not found")
+            continue
+        else
+            println("Node $n marked on the map.")
+        end
+        location = GetLLOfPoint(map,mData,n)
+
+        info = "Node $n\n<br>"
+        flm.Circle(
+         location,
+         popup=info,
+         tooltip=info,
+         radius=10,
+         color="crimson",
+         weight=4,
+         fill=true,
+         fill_color="crimson"
+      ).add_to(m)
+    end
+    MAP_BOUNDS = [(mData.bounds.min_y,mData.bounds.min_x),(mData.bounds.max_y,mData.bounds.max_x)]
+    flm.Rectangle(MAP_BOUNDS, color="black",weight=6).add_to(m)
+    m.fit_bounds(MAP_BOUNDS)
+    m.save("NodesGraph.html")
+    println("File Saved!")
+
+end
+
+function GraphAllPaths(map::OpenStreetMapX.OSMData, mData::MapData)
+    flm = pyimport("folium")
+    matplotlib_cm = pyimport("matplotlib.cm")
+    matplotlib_colors = pyimport("matplotlib.colors")
+    cmap = matplotlib_cm.get_cmap("prism")
+    m = flm.Map()
+
+    for e in mData.e
+        if !haskey(map.nodes, e[1]) || !haskey(map.nodes, e[2])
+            continue
+        end
+        p1 = GetLLOfPoint2(map,mData,e[1])
+        p2 = GetLLOfPoint2(map,mData,e[2])
+
+        flm.PolyLine([p1, p2], color="red", weight=2.5, opacity=1).add_to(m)
+    end
+    MAP_BOUNDS = [(mData.bounds.min_y,mData.bounds.min_x),(mData.bounds.max_y,mData.bounds.max_x)]
+    flm.Rectangle(MAP_BOUNDS, color="black",weight=6).add_to(m)
+    m.fit_bounds(MAP_BOUNDS)
+    m.save("RoadsGraph.html")
+    println("File Saved!")
 end
