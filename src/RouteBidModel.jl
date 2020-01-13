@@ -27,13 +27,13 @@ export SetLL
 export MakeAction!
 export runsim
 export set_spawn_dest!
-export SpawnAgentAtRandom
+export spawn_agent_random!
 export GetNodesOutsideRadius
 export get_nodes_in_radius
 export GetNodesBetween
-export LoadSim
+export load_sim
 export savesim
-export LoadSim2
+export load_sim2
 export savesim2
 export plot_agents
 export create_network_from_file

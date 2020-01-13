@@ -27,7 +27,7 @@ file = "buffaloF.osm"
 
 ####
 
-function AddRegistry(msg::String, prompt::Bool = false)
+function addregistry(msg::String, prompt::Bool = false)
     if muteRegistering return end
 
     push!(simLog, msg)
@@ -385,7 +385,7 @@ end
 #         end
 #         push!(s.timeStepVar, maximum([t_min, s.dt_min]))
 #     end
-#     #AddRegistry("Time step: $(s.timeStepVar[s.iter]) at iter $(s.iter)")
+#     #addregistry("Time step: $(s.timeStepVar[s.iter]) at iter $(s.iter)")
 #     return s.timeStepVar[end]
 # end
 
@@ -401,7 +401,7 @@ function InitNetwork!(n::Network, coords::Vector{Tuple{Float64,Float64,Float64}}
         for j in 1:n.graph.weights.n
             if n.graph.weights[i, j] != 0
                 n.numRoads += 1
-                AddRegistry("$(n.numRoads): $(i) -> $(j) = $(n.graph.weights[i,j])")
+                addregistry("$(n.numRoads): $(i) -> $(j) = $(n.graph.weights[i,j])")
             end
         end
     end
@@ -419,7 +419,7 @@ function InitNetwork!(n::Network, coords::Vector{Tuple{Float64,Float64,Float64}}
             end
         end
     end
-    AddRegistry("Network has been successfully initialized.", true)
+    addregistry("Network has been successfully initialized.", true)
 end
 
 function ConvertToNetwork(m::MapData)::Network
@@ -545,7 +545,7 @@ function CanFitAtRoad(a::Agent, r::Road)::Bool
     return length(r.agents) < r.capacity #Check theres room on road for agent
 end
 
-function RecalculateRoad!(r::Road) #Set Velocity function
+function recalculate_road!(r::Road) #Set Velocity function
     r.curVelocity = min(lin_k_f_model(length(r.agents), r.capacity, r.vMax, r.vMin), r.vMax)
     #Set the current velocity all cars are going on this road based on length, number of agents on the road (congestion), etc.
     r.ttime = r.length / r.curVelocity
@@ -567,7 +567,7 @@ function GetRouteDistance(n::Network, r::Vector{Int})::Real
     return len
 end
 
-function SpawnAgents(s::Simulation, dt::Real)
+function spawn_agent!s(s::Simulation, dt::Real)
     if s.maxAgents == s.network.agentCntr
         return
     end
@@ -575,7 +575,7 @@ function SpawnAgents(s::Simulation, dt::Real)
     λ = 5.0    #avg number of vehicles per second that appear
     k = minimum([maximum([rand(Distributions.Poisson(λ * dt)), 0]), s.maxAgents - s.network.agentCntr])
     for i in 1:k
-        SpawnAgentAtRandom(s.network, s.timeElapsed)
+        spawn_agent_random!(s.network, s.timeElapsed)
         SetWeights!(s.network.agents[end], s);
     end
 end
@@ -583,11 +583,11 @@ end
 function SpawnNumAgents(s::Simulation, num::Int)
     num = min(num, s.maxAgents - s.network.agentCntr)
     for i in 1:num
-        SpawnAgentAtRandom(s.network, s.timeElapsed)
+        spawn_agent_random!(s.network, s.timeElapsed)
     end
 end
 
-function SpawnAgentAtRandom(n::Network, time::Real = 0.0)
+function spawn_agent_random!(n::Network, time::Real = 0.0)
     start = Int64
     dest = Int64
     create_agent = false
@@ -595,13 +595,13 @@ function SpawnAgentAtRandom(n::Network, time::Real = 0.0)
     while create_agent == false
         start = rand(n.spawns)
         dest = rand(n.dests)
-        create_agent = IsRoutePossible(n,start,dest)
+        create_agent = is_route_possible(n,start,dest)
     end
 
     σ = 0.1    #standard deviation as a share of expected travel time
     ϵ = 0.1    #starting time glut as a share of travel time
 
-    dt = EstimateTime(n, start, dest)
+    dt = estimate_time(n, start, dest)
 
     arrivT = rand(Distributions.Normal(time + (1.0 + ϵ) * dt, σ * dt))
 
@@ -640,7 +640,7 @@ function SetShortestPath!(a::Agent, nw::Network)::Real
     #             push!(a.bestRoute, nextNode) #Add road to overall shortest path
     #         end
     #         pop!(a.bestRoute)
-    #         a.timeEstim = EstimateTime(s.network, a.atNode.nodeID, a.destNode.nodeID)
+    #         a.timeEstim = estimate_time(s.network, a.atNode.nodeID, a.destNode.nodeID)
     #         return a.bestRouteCost = dist
     #     else
     #         return Inf
@@ -660,7 +660,7 @@ function SetShortestPath!(a::Agent, nw::Network)::Real
             push!(a.bestRoute, nextNode)
         end
         pop!(a.bestRoute)
-        a.timeEstim = EstimateTimeQuick(nw, a.bestRoute)
+        a.timeEstim = estimate_timeQuick(nw, a.bestRoute)
         return a.bestRouteCost = dist
     else
         return Inf
@@ -690,7 +690,7 @@ function SetAlternatePath!(a::Agent)::Real
     #         a.reducedGraph.weights[bNode,delNode] = oVal
     #     else
     #         a.reducedGraph.weights[bNode,delNode] = oVal
-    #         #AddRegistry("Agent $(a.id) could not find an alterante path at node $(a.atNode.nodeID)", true)
+    #         #addregistry("Agent $(a.id) could not find an alterante path at node $(a.atNode.nodeID)", true)
     #     end
     #     return a.alterRouteCost = dist
     # end
@@ -726,7 +726,7 @@ function SetAlternatePath!(a::Agent)::Real
 end
 
 #Estimates how much more time agent needs to ed his destination point
-function EstimateTime(n::Network, start::Int, dest::Int)::Real
+function estimate_time(n::Network, start::Int, dest::Int)::Real
     if start == dest
         return 0
     end
@@ -748,7 +748,7 @@ function EstimateTime(n::Network, start::Int, dest::Int)::Real
     return ttot
 end
 
-function EstimateTimeQuick(n::Network, route::Vector{Int})::Real
+function estimate_timeQuick(n::Network, route::Vector{Int})::Real
     ttot = 0.
     if length(route) < 2
         return 0
@@ -788,7 +788,7 @@ end
 function ReachedIntersection(a::Agent, s::Simulation) #Takes the agent and network
     a.atNode = a.atRoad == nothing ? a.atNode : s.network.intersections[a.atRoad.fNode] #necessary check, as agent spawned is not assigned to any road
     if a.atNode == a.destNode
-        AddRegistry("Agent $(a.id) destroyed.") #Add to registry that agent has been destroyed
+        addregistry("Agent $(a.id) destroyed.") #Add to registry that agent has been destroyed
         RemoveFromRoad!(a.atRoad, a)
         push!(a.travelledRoute,a.atNode.nodeID)
         push!(s.agentsFinished,a)
@@ -815,7 +815,7 @@ function ReachedIntersection(a::Agent, s::Simulation) #Takes the agent and netwo
                 a.origRoute = oroute
             end
 
-            #a.timeEstim = EstimateTimeQuick(nw, a.bestRoute)
+            #a.timeEstim = estimate_timeQuick(nw, a.bestRoute)
             nextRoad = get_road_by_nodes(s.network, a.atNode.nodeID, a.bestRoute[1]) #Get the road agent is turning on
 
             if (CanFitAtRoad(a, nextRoad)) #Check that he fits on the road
@@ -842,7 +842,7 @@ function MakeAction!(a::Agent, sim::Simulation) #Takes an agent ID and simulatio
     else
         a.roadPosition += a.atRoad.curVelocity * dt #The velocity of the road agent is currently on multiplied by the timestep
         a.roadPosition = min(a.roadPosition, a.atRoad.length) #Take the minimum value between the position they are on the road and the length of that road
-        #AddRegistry("Agent $(a.id) has travelled $(GetAgentLocation(a, sim.network)[3]) of $(a.atRoad.length) m from $(GetAgentLocation(a, sim.network)[1]) to $(GetAgentLocation(a, sim.network)[2]) at speed: $(a.atRoad.curVelocity*3.6)km/h")
+        #addregistry("Agent $(a.id) has travelled $(GetAgentLocation(a, sim.network)[3]) of $(a.atRoad.length) m from $(GetAgentLocation(a, sim.network)[1]) to $(GetAgentLocation(a, sim.network)[2]) at speed: $(a.atRoad.curVelocity*3.6)km/h")
         if a.roadPosition == a.atRoad.length #If their road position is at the end of the road
             ReachedIntersection(a, sim)
         end
@@ -997,15 +997,15 @@ function runsim(s::Simulation, runTime::Int = 0)::Bool
             return false
         end
         s.iter += 1 #Add new number of iteration
-        AddRegistry("[$(round(s.timeElapsed/s.timeMax*100, digits=1))%] Iter #$(s.iter), time: $(s.timeElapsed), agents: $(s.network.agentCntr), agents total: $(s.network.agentIDmax)", true)
+        addregistry("[$(round(s.timeElapsed/s.timeMax*100, digits=1))%] Iter #$(s.iter), time: $(s.timeElapsed), agents: $(s.network.agentCntr), agents total: $(s.network.agentIDmax)", true)
 
         for r in s.network.roads #For each road in the network, set the velocity of the road based on congestion, etc.
-            RecalculateRoad!(r)
+            recalculate_road!(r)
         end
 
         #Spawn some number of agents
         if s.iter > 1
-            SpawnAgents(s, s.timeStep)
+            spawn_agent!s(s, s.timeStep)
         else
             SpawnNumAgents(s, s.initialAgents)
         end
@@ -1054,7 +1054,7 @@ function EuclideanNorm(p1::Tuple{Real,Real}, p2::Tuple{Real,Real})
     return sqrt((p1[1] - p2[1])^2 + (p1[2] - p2[2])^2)
 end
 
-function IsRoutePossible(n::Network, startNode::Int64, endNode::Int64)
+function is_route_possible(n::Network, startNode::Int64, endNode::Int64)
     route = LightGraphs.dijkstra_shortest_paths(n.graph,endNode)
     dist = route.dists[startNode]
     if dist == Inf
@@ -1087,7 +1087,7 @@ function GrabAuctionParticipants(nw::Network, r::Road, s::Simulation)::Vector{Ag
             agent = GetAgentByID(nw, a)
             SetAlternatePath!(agent)
             if (agent.bestRouteCost = CalculateRouteCost(agent, s, agent.bestRoute)) > (agent.alterRouteCost = CalculateRouteCost(agent, s, agent.alterRoute))
-                #AddRegistry("Oops! The best route has higher cost than alternative. Something is not right.", true)
+                #addregistry("Oops! The best route has higher cost than alternative. Something is not right.", true)
                 continue
             end
             if length(agent.bestRoute) >= 2
@@ -1132,7 +1132,7 @@ function GrabAuctionPlaces(s::Simulation)::Vector{Auction}
     for au in auctions
         push!(s.auctions, au)
     end
-    AddRegistry("$(length(auctions)) potential auction spot(s) have been selected.", true)
+    addregistry("$(length(auctions)) potential auction spot(s) have been selected.", true)
     return auctions
 end
 
@@ -1344,8 +1344,8 @@ function StackModelAuction(s::Simulation, au::Auction)
         end
         if k1 == 0
             @label stop
-            AddRegistry("No more buy-offs possible! Auction $(au.auctionID) stopped at round $(au.rounds) with $(length(remaining_agents)) participants.", true)
-            AddRegistry("Auction $(au.auctionID) round $(au.rounds): total buyers' bid $(tot), lowest sale bid: $(minS) exceeded by $(100*(minS/tot-1))%", true)
+            addregistry("No more buy-offs possible! Auction $(au.auctionID) stopped at round $(au.rounds) with $(length(remaining_agents)) participants.", true)
+            addregistry("Auction $(au.auctionID) round $(au.rounds): total buyers' bid $(tot), lowest sale bid: $(minS) exceeded by $(100*(minS/tot-1))%", true)
             au.rounds -= 1
             return
         else
@@ -1376,43 +1376,43 @@ function StackModelAuction(s::Simulation, au::Auction)
 
         au.rounds += 1
         if au.rounds > length(au.participants) - 1
-            AddRegistry("Oops! Something's wrong with your while loop at auction $(au.auctionID).", true)
+            addregistry("Oops! Something's wrong with your while loop at auction $(au.auctionID).", true)
             break
         end
     end
 end
 
 
-function savesim(sim::Simulation, file::String)::Bool
-
-    f = open(".\\results\\simulations\\" * file * ".sim", "w")
+function savesim(sim::Simulation, filename::AbstractString)::Bool
+    f = open(filename, "w")
     serialize(f, sim)
     close(f)
-    AddRegistry("File successfully saved as " * "\\results\\simulations\\" * file * ".sim", true)
+    addregistry("File successfully saved as $filename", true)
     return true
 end
 
-function savesim2(sim::Simulation, path::String, file::String)::Bool
-    f = open(path * file * ".sim", "w")
+function savesim2(sim::Simulation, path::AbstractString, filename::AbstractString)::Bool
+    fname = joinpath(path,filename)
+    f = open(fname, "w")
     serialize(f, sim)
     close(f)
-    AddRegistry("File successfully saved as " * path * file * ".sim", true)
+    addregistry("File successfully saved as $fname", true)
     return true
 end
 
-function LoadSim(file::String)::Simulation
-    f = open(".\\results\\simulations\\" * file * ".sim", "r")
+function load_sim(filename::AbstractString)::Simulation
+    f = open(filename, "r")
     sim = deserialize(f)
     close(f)
 
     return sim
 end
 
-function LoadSim2(path::String, file::String)::Simulation
-    f = open(path * file * ".sim", "r")
+function load_sim2(path::AbstractString, filename::AbstractString)::Simulation
+    fname = joinpath(path, filename)
+    f = open(fname, "r")
     sim = deserialize(f)
     close(f)
-
     return sim
 end
 
