@@ -435,7 +435,7 @@ function ConvertToNetwork(m::MapData)::Network
     return Network(g, [m.nodes[m.n[i]] for i in 1:length(m.n)], m)
 end
 
-function SetSpawnAndDestPts!(n::Network, spawns::Vector{Int}, dests::Vector{Int})
+function set_spawn_dest!(n::Network, spawns::Vector{Int}, dests::Vector{Int})
     empty!(n.spawns)
     for i in spawns
         n.intersections[i].spawnPoint = true
@@ -449,7 +449,7 @@ function SetSpawnAndDestPts!(n::Network, spawns::Vector{Int}, dests::Vector{Int}
     end
 end
 
-function GetRoadByNodes(n::Network, first::Int, second::Int)::Union{Road,Nothing} #Take two nodes, get road between them
+function get_road_by_nodes(n::Network, first::Int, second::Int)::Union{Road,Nothing} #Take two nodes, get road between them
     if first > length(n.intersections) || second > length(n.intersections) #If ID of either nodes not in intersections range give error
         error("Node of of boundries")
     else #Otherwise
@@ -463,7 +463,7 @@ function GetRoadByNodes(n::Network, first::Int, second::Int)::Union{Road,Nothing
     return nothing
 end
 
-function GetIntersectByNode(n::Network, id::Int)::Intersection #Takes the network and node ID of the node Intersection it's currently on
+function getintersect(n::Network, id::Int)::Intersection #Takes the network and node ID of the node Intersection it's currently on
     for i in n.intersections
         if i.nodeID == id
             return i #Return the information for the intersection they're on
@@ -511,7 +511,7 @@ function DumpRoadsInfo(s::Simulation)
     end
 end
 
-function GetNodesInRadius(n::Network, pt::Tuple{Real,Real}, r::Real)::Vector{Int}
+function get_nodes_in_radius(n::Network, pt::Tuple{Real,Real}, r::Real)::Vector{Int}
     v = Vector{Int}()
     for i in 1:length(n.intersections)
         if EuclideanNorm(pt, (n.intersections[i].posX, n.intersections[i].posY)) <= r
@@ -562,7 +562,7 @@ end
 function GetRouteDistance(n::Network, r::Vector{Int})::Real
     len = 0.
     for i in 1:(length(r)-1)
-        len += GetRoadByNodes(n, r[i], r[i + 1]).length
+        len += get_road_by_nodes(n, r[i], r[i + 1]).length
     end
     return len
 end
@@ -742,7 +742,7 @@ function EstimateTime(n::Network, start::Int, dest::Int)::Real
     nxt = prev = start
 
     while (nxt = pth.parents[prev]) != 0
-        ttot += GetRoadByNodes(n, prev, nxt).ttime
+        ttot += get_road_by_nodes(n, prev, nxt).ttime
         prev = nxt
     end
     return ttot
@@ -759,7 +759,7 @@ function EstimateTimeQuick(n::Network, route::Vector{Int})::Real
         if nxt == 0 || prev == 0
             continue
         end
-        ttot += GetRoadByNodes(n, prev, nxt).ttime
+        ttot += get_road_by_nodes(n, prev, nxt).ttime
         prev = nxt
     end
 
@@ -816,7 +816,7 @@ function ReachedIntersection(a::Agent, s::Simulation) #Takes the agent and netwo
             end
 
             #a.timeEstim = EstimateTimeQuick(nw, a.bestRoute)
-            nextRoad = GetRoadByNodes(s.network, a.atNode.nodeID, a.bestRoute[1]) #Get the road agent is turning on
+            nextRoad = get_road_by_nodes(s.network, a.atNode.nodeID, a.bestRoute[1]) #Get the road agent is turning on
 
             if (CanFitAtRoad(a, nextRoad)) #Check that he fits on the road
                 if(a.atRoad != nothing)
@@ -987,7 +987,7 @@ function DumpAuctionsInfo(sim::Simulation)::DataFrame
     # return s
 end
 
-function RunSim(s::Simulation, runTime::Int = 0)::Bool
+function runsim(s::Simulation, runTime::Int = 0)::Bool
     if runTime > 0
         s.timeMax = s.timeMax + runTime
     end
@@ -1029,7 +1029,7 @@ function RunSim(s::Simulation, runTime::Int = 0)::Bool
         s.timeElapsed += s.timeStep
 
         if (s.iter % saveEach) == 0
-            SaveSim(s, "sim_stack_2k_10dt_t=" * string(Int(floor(s.timeElapsed))))
+            savesim(s, "sim_stack_2k_10dt_t=" * string(Int(floor(s.timeElapsed))))
         end
 
         if s.iter > s.maxIter return false end
@@ -1071,7 +1071,7 @@ function CalculateRouteCost(a::Agent, s::Simulation, route::Vector{Int})::Real
 
     cost = 0
     for i in 2:length(route)
-        r = GetRoadByNodes(nw, route[i - 1], route[i])
+        r = get_road_by_nodes(nw, route[i - 1], route[i])
         r.ttime = r.length / r.curVelocity
         cost += r in a.bannedRoads ? Inf : r.ttime * GetVoT(a, s.timeElapsed) + r.length * a.CoF
     end
@@ -1234,14 +1234,14 @@ function CalculateEvaluations(nw::Network, subj_road::Road, buyer::Agent, seller
     if buyer.atRoad != nothing
         t_buyer = buyer.atRoad.ttime * (buyer.atRoad.length - buyer.roadPosition) / buyer.atRoad.length
     else
-        nxtRoad = GetRoadByNodes(nw, buyer.atNode.nodeID, buyer.bestRoute[1])
+        nxtRoad = get_road_by_nodes(nw, buyer.atNode.nodeID, buyer.bestRoute[1])
         t_buyer = nxtRoad.ttime
     end
 
     if seller.atRoad != nothing
         t_seller = seller.atRoad.ttime * (seller.atRoad.length - seller.roadPosition) / seller.atRoad.length
     else
-        nxtRoad = GetRoadByNodes(nw, seller.atNode.nodeID, seller.bestRoute[1])
+        nxtRoad = get_road_by_nodes(nw, seller.atNode.nodeID, seller.bestRoute[1])
         t_seller = nxtRoad.ttime
     end
 
@@ -1383,7 +1383,7 @@ function StackModelAuction(s::Simulation, au::Auction)
 end
 
 
-function SaveSim(sim::Simulation, file::String)::Bool
+function savesim(sim::Simulation, file::String)::Bool
 
     f = open(".\\results\\simulations\\" * file * ".sim", "w")
     serialize(f, sim)
@@ -1392,7 +1392,7 @@ function SaveSim(sim::Simulation, file::String)::Bool
     return true
 end
 
-function SaveSim2(sim::Simulation, path::String, file::String)::Bool
+function savesim2(sim::Simulation, path::String, file::String)::Bool
     f = open(path * file * ".sim", "w")
     serialize(f, sim)
     close(f)
