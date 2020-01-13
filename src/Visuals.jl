@@ -89,7 +89,7 @@ function OVAGraph(map::OpenStreetMapX.OSMData, mData::MapData, a::Agent)
     println("File Saved!")
 end
 
-function GraphAgents(map::OpenStreetMapX.OSMData, mData::MapData, agents::Array{Agent})
+function plot_agents(map::OpenStreetMapX.OSMData, mData::MapData, agents::Array{Agent})
 
     flm = pyimport("folium")
     matplotlib_cm = pyimport("matplotlib.cm")
@@ -151,7 +151,7 @@ function GraphAuctionLocations(map::OpenStreetMapX.OSMData, mData::MapData, aucs
 
 end
 
-function GraphNodesLocations(map::OpenStreetMapX.OSMData, mData::MapData)
+function plot_nodes_locations(map::OpenStreetMapX.OSMData, mData::MapData)
     flm = pyimport("folium")
     matplotlib_cm = pyimport("matplotlib.cm")
     matplotlib_colors = pyimport("matplotlib.colors")
@@ -187,7 +187,7 @@ function GraphNodesLocations(map::OpenStreetMapX.OSMData, mData::MapData)
 
 end
 
-function GraphAllPaths(map::OpenStreetMapX.OSMData, mData::MapData)
+function plot_all_paths(map::OpenStreetMapX.OSMData, mData::MapData)
     flm = pyimport("folium")
     matplotlib_cm = pyimport("matplotlib.cm")
     matplotlib_colors = pyimport("matplotlib.colors")
