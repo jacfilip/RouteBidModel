@@ -448,7 +448,7 @@ function GetNodesBetween(n::Network, pt::Tuple{Real,Real}, r::Real, R::Real)::Ve
 end
 
 function CanFitAtRoad(a::Agent, r::Road)::Bool
-    return true
+    #return true
     return length(r.agents) < r.capacity #Check theres room on road for agent
 end
 
