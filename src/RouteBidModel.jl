@@ -39,6 +39,7 @@ export plot_agents
 export create_network_from_file
 export getintersect, get_road_by_nodes, plot_nodes_locations
 export plot_all_paths
+export GetAgentByID
 
 include("decls.jl")
 include("osm_convert.jl")

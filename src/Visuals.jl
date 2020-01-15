@@ -97,7 +97,7 @@ function plot_agents(map::OpenStreetMapX.OSMData, mData::MapData, agents::Array{
     cmap = matplotlib_cm.get_cmap("prism")
     m = flm.Map()
 
-    for n = 1:min(length(agents),10)
+    for n = 1:min(length(agents),1000)
         LL = GetLLOfRoute(map,mData,agents[n].travelledRoute[1:end])
         info = "Agent # $(agents[n].id)\n<BR>"*
                 "Length: $(length(agents[n].travelledRoute)) nodes\n<br>" *

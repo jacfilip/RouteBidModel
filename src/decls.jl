@@ -31,8 +31,9 @@ s0_2 = [532, 1214]
 s0_3 = [1044, 1045]
 
 #west bridge
-s1 = [20, 771, 960, 965, 112, 113, 1163, 686]
-
+#s1 = [20, 771, 960, 965, 112, 113, 1163, 686]
+s1 = [965, 112]
+s1_2 = [747, 635]
 
 ####
 
@@ -447,6 +448,7 @@ function GetNodesBetween(n::Network, pt::Tuple{Real,Real}, r::Real, R::Real)::Ve
 end
 
 function CanFitAtRoad(a::Agent, r::Road)::Bool
+    return true
     return length(r.agents) < r.capacity #Check theres room on road for agent
 end
 
@@ -454,7 +456,7 @@ function recalculate_road!(r::Road) #Set Velocity function
     #velocity calculated only on active lanes of bridges
     if  r.bNode in s0[1:end-1] || r.bNode in s1[1:end-1]
         r.curVelocity = min(lin_k_f_model(length(r.agents), r.capacity, r.vMax, r.vMin), r.vMax)
-    elseif r.bNode in s0_2[1:end-1] || r.bNode in s0_3[1:end-1]
+    elseif r.bNode in s0_2[1:end-1] || r.bNode in s0_3[1:end-1] || r.bNode in s1_2[1:end-1]
         r.curVelocity = 0
     else
         r.curVelocity = r.vMax
@@ -485,8 +487,8 @@ function spawn_agent!s(s::Simulation, dt::Real)
         return
     end
 
-    λ = 5.0    #avg number of vehicles per second that appear
-    k = minimum([maximum([rand(Distributions.Poisson(λ * dt)), 0]), s.maxAgents - s.network.agentCntr])
+    λ = 20.0    #avg number of vehicles per second that appear
+    k = λ       # minimum([maximum([rand(Distributions.Poisson(λ * dt)), 0]), s.maxAgents - s.network.agentCntr])
     for i in 1:k
         spawn_agent_random!(s.network, s.timeElapsed)
         SetWeights!(s.network.agents[end], s);
@@ -898,8 +900,12 @@ function exp_k_f_model(k::Real, k_max::Real, v_max::Real)
 end
 
 function lin_k_f_model(k::Int, k_max::Int, v_max::Real = 50.0 / 3.6, v_min::Real = 1.0 / 3.6)
-    v = (v_max - v_min) * (1.0 - k / k_max) + v_min
-    return  v < 0 || v == NaN ? throw(Exception("Velocity less than zero or not a number")) : v
+    if k > k_max
+        return v_min
+    else
+        return (v_max - v_min) * (1.0 - k / k_max) + v_min
+    end
+    #return  v < 0 || v == NaN ? throw(Exception("Velocity less than zero or not a number")) : v
 end
 
 function DistanceENU(p1::ENU, p2::ENU)
