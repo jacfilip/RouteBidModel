@@ -32,7 +32,7 @@ nw = create_network_from_file(path, file)
 set_spawn_dest!(nw,  [553], [847])
 
 Random.seed!(0);
-sim = Simulation(nw, 30 * 60, maxAgents = 1000, dt = 5.0, initialAgents = 500, auctions = false)
+sim = Simulation(nw, 60 * 60, maxAgents = 1000, dt = 5.0, initialAgents = 500, auctions = false)
 @time runsim(sim)
 osmmap = OpenStreetMapX.parseOSM(joinpath(path,file))
 crop!(osmmap)

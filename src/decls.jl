@@ -448,8 +448,11 @@ function GetNodesBetween(n::Network, pt::Tuple{Real,Real}, r::Real, R::Real)::Ve
 end
 
 function CanFitAtRoad(a::Agent, r::Road)::Bool
-    #return true
-    return length(r.agents) < r.capacity #Check theres room on road for agent
+    if  r.bNode in s0[1:end-1] || r.bNode in s1[1:end-1]
+        return length(r.agents) < r.capacity #Check theres room on road for agent
+    else
+        return true
+    end
 end
 
 function recalculate_road!(r::Road) #Set Velocity function
@@ -488,7 +491,7 @@ function spawn_agent!s(s::Simulation, dt::Real)
     end
 
     λ = 20.0    #avg number of vehicles per second that appear
-    k = λ       # minimum([maximum([rand(Distributions.Poisson(λ * dt)), 0]), s.maxAgents - s.network.agentCntr])
+    k = minimum([λ,  s.maxAgents - s.network.agentCntr])      # minimum([maximum([rand(Distributions.Poisson(λ * dt)), 0]), s.maxAgents - s.network.agentCntr])
     for i in 1:k
         spawn_agent_random!(s.network, s.timeElapsed)
         SetWeights!(s.network.agents[end], s);
