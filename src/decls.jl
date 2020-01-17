@@ -172,15 +172,15 @@ end
 mutable struct Network
     roads::Vector{Road}
     intersections::Vector{Intersection}
-    spawns::Vector{Int}
-    dests::Vector{Int}
+    spawns::Vector{Int}  #points where agents can spawn
+    dests::Vector{Int} #points that can be targets for agents
     numRoads::Int
     agents::Vector{Agent}
     graph::SimpleWeightedDiGraph
     osmData::OpenStreetMapX.OSMData
     mapData::MapData
-    agentCntr::Int
-    agentIDmax::Int
+    agentCntr::Int  #number of current agents
+    agentIDmax::Int #maximum agents on map
     Network(g::SimpleWeightedDiGraph, coords::Vector{Tuple{Float64,Float64,Float64}}, mdata::MapData) = (
             n = new();
             n.graph = deepcopy(g);
