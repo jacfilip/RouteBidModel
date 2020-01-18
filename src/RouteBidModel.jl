@@ -17,6 +17,8 @@ using Serialization
 using PaddedViews
 using RecursiveArrayTools
 
+using Parameters
+
 
 export Network
 export Simulation
@@ -41,7 +43,7 @@ export getintersect, get_road_by_nodes, plot_nodes_locations
 export plot_all_paths
 export GetAgentByID
 
-include("decls.jl")
+include("decls2.jl")
 include("osm_convert.jl")
 include("Visuals.jl")
 

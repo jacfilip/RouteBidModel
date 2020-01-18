@@ -120,37 +120,6 @@ function plot_agents(map::OpenStreetMapX.OSMData, mData::MapData, agents::Array{
 end
 
 
-function GraphAuctionLocations(map::OpenStreetMapX.OSMData, mData::MapData, aucs::Array{Auction})
-    flm = pyimport("folium")
-    matplotlib_cm = pyimport("matplotlib.cm")
-    matplotlib_colors = pyimport("matplotlib.colors")
-    cmap = matplotlib_cm.get_cmap("prism")
-    m = flm.Map()
-
-    for auction in aucs
-        location = GetLLOfPoint(map,mData,auction.road.bNode)
-        info = "Node $(auction.road.bNode)\n<br>"*
-               "Auction ID $(auction.auctionID)\n<br>"*
-               "Number of Agents Bought Off: $(length(auction.sBids))"
-        flm.Circle(
-         location,
-         popup=info,
-         tooltip=info,
-         radius=50,
-         color="crimson",
-         weight=0.1,
-         fill=true,
-         fill_color="crimson"
-      ).add_to(m)
-    end
-    MAP_BOUNDS = [(mData.bounds.min_y,mData.bounds.min_x),(mData.bounds.max_y,mData.bounds.max_x)]
-    flm.Rectangle(MAP_BOUNDS, color="black",weight=6).add_to(m)
-    m.fit_bounds(MAP_BOUNDS)
-    m.save("AuctionsGraph.html")
-    println("File Saved!")
-
-end
-
 function plot_nodes_locations(map::OpenStreetMapX.OSMData, mData::MapData)
     flm = pyimport("folium")
     matplotlib_cm = pyimport("matplotlib.cm")

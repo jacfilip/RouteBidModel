@@ -1,34 +1,19 @@
+using Revise
 using Pkg
 Pkg.activate(".")
 using RouteBidModel
 using Random
 using OpenStreetMapX
-using Revise
+
 
 Random.seed!(0);
 
 path = joinpath("src","maps")
 file = "manhattan_filtered.osm"
 
-#set_spawn_dest!(nw, GetNodesOutsideRadius(nw,(-2000.,-2000.),4000.), get_nodes_in_radius(nw,(-2000.,-2000.),2000.))
-
-#Bridge1: 1044->1045, 532->1214 , 445->446
-#set_spawn_dest!(nw, [345], [958])
-#inter = getintersect(nw, 553)
-#disable lane no.1
-# get_road_by_nodes(nw, 1044, 1045).length = Inf
-# nw.graph.weights[1044, 1045] = Inf
-#
-# #disable lane no.2
-# get_road_by_nodes(nw, 532, 1214).length = Inf
-# nw.graph.weights[532, 1214] = Inf
-#
-# #disable lane no.3
-# get_road_by_nodes(nw, 445, 446).length = Inf
-# nw.graph.weights[445, 446] = Inf
-
 nw = create_network_from_file(path, file)
 
+#TODO many spawn dests
 set_spawn_dest!(nw,  [553], [847])
 
 Random.seed!(0);
