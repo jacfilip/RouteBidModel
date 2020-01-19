@@ -1,31 +1,37 @@
-using JuMP
-using LinearAlgebra
-using Juniper
-using Ipopt
-using DelimitedFiles
-using Parameters
-using Random
-using Statistics
-
-using DataFrames
-
 
 """
 Represents parameters for a two-road transportation system
 """
-@with_kw struct ModelParams
+@with_kw struct BidModelParams
     N_MAX = 251   #number of agents
-    ct = [0.00749, 0.00640, 0.00837, 0.00689, 0.00563, 0.00751, 0.00791, 0.00732, 0.00746, 0.00655, 0.00646, 0.00565, 0.00509, 0.00716, 0.00660, 0.00664, 0.00729, 0.00763, 0.00809, 0.00612, 0.00638, 0.00708, 0.00632, 0.00736, 0.00592, 0.00720, 0.00702, 0.00728, 0.00626, 0.00714, 0.00617, 0.00467, 0.00812, 0.00625, 0.00529, 0.00582, 0.00643, 0.00679, 0.00629, 0.00700, 0.00650, 0.00838, 0.00720, 0.00768, 0.00725, 0.00693, 0.00744, 0.00481, 0.00666, 0.00556, 0.00705, 0.00728, 0.00672, 0.00656, 0.00724, 0.00784, 0.00576, 0.00686, 0.00788, 0.00586, 0.00534, 0.00773, 0.00637, 0.00692, 0.00635, 0.00629, 0.00741, 0.00654, 0.00690, 0.00637, 0.00774, 0.00718, 0.00713, 0.00594, 0.00637, 0.00585, 0.00667, 0.00706, 0.00654, 0.00729, 0.00613, 0.00757, 0.00653, 0.00656, 0.00646, 0.00663, 0.00615, 0.00670, 0.00646, 0.00698, 0.00747, 0.00645, 0.00623, 0.00592, 0.00635, 0.00646, 0.00833, 0.00526, 0.00787, 0.00864, 0.00553, 0.00768, 0.00613, 0.00788, 0.00459, 0.00737, 0.00797, 0.00562, 0.00649, 0.00621, 0.00594, 0.00624, 0.00699, 0.00867, 0.00684, 0.00723, 0.00783, 0.00649, 0.00790, 0.00621, 0.00608, 0.00706, 0.00692, 0.00711, 0.00637, 0.00768, 0.00660, 0.00505, 0.00643, 0.00732, 0.00628, 0.00686, 0.00820, 0.00705, 0.00610, 0.00491, 0.00567, 0.00673, 0.00688, 0.00724, 0.00674, 0.00742, 0.00690, 0.00720, 0.00639, 0.00686, 0.00781, 0.00832, 0.00730, 0.00851, 0.00712, 0.00667, 0.00722, 0.00503, 0.00821, 0.00694, 0.00670, 0.00646, 0.00689, 0.00638, 0.00644, 0.00534, 0.00631, 0.00622, 0.00718, 0.00648, 0.00732, 0.00562, 0.00689, 0.00726, 0.00831, 0.00581, 0.00525, 0.00917, 0.00579, 0.00860, 0.00656, 0.00632, 0.00695, 0.00735, 0.00562, 0.00672, 0.00829, 0.00566, 0.00834, 0.00639, 0.00876, 0.00702, 0.00687, 0.00831, 0.00674, 0.00593, 0.00654, 0.00662, 0.00577, 0.00588, 0.00521, 0.00732, 0.00716, 0.00748, 0.00782, 0.00742, 0.00743, 0.00849, 0.00607, 0.00694, 0.00672, 0.00567, 0.00802, 0.00791, 0.00655, 0.00686, 0.00800, 0.00539, 0.00688, 0.00639, 0.00710, 0.00628, 0.00620, 0.00670, 0.00649, 0.00684, 0.00723, 0.00571, 0.00560, 0.00850, 0.00617, 0.00681, 0.00618, 0.00758, 0.00620, 0.00653, 0.00501, 0.00750, 0.00650, 0.00719, 0.00710, 0.00736, 0.00668, 0.00659, 0.00656, 0.00934, 0.00588, 0.00796, 0.00746, 0.00743, 0.00641, 0.00668, 0.00656, 0.00583, 0.00711, ]
-    #vcat(
-     #  [10 + (rand() - 0.5) * 10 for i in 1:3],
-     #  [10 + (rand() - 0.5) * 10 for i in 4:N_MAX]) #./ 3600
-       #real cost of time USDs/s for each agent
+    ct =  vcat(
+       [10 + (rand() - 0.5) * 10 for i in 1:3],
+       [10 + (rand() - 0.5) * 10 for i in 4:N_MAX]) #./ 3600
+    #real cost of time USDs/s for each agent
     cf = 2.1 / 1000 # cost of fuel USD/m
     d = [2786.0, 3238.0]  #road length m
     N = [250, 250]        #road max capacity
     v_min  = [1 /3.6, 1 / 3.6]  #minimal velocity m/s
     v_max = [60 / 3.6, 50 / 3.6] #maximal velocity m/s
 end
+
+function calculate_nash(s::Simulation)
+    N_MAX = s.network.agentIDmax,
+    ct = [s.network.agents[i].valueOfTime for i in 1:s.network.agentIDmax],
+    cf = s.p.CoF,
+    travel_counts = [0, 0]
+
+    for n in 1:N_MAX    # gdy reps > 1 to kolejnosc losowa
+        a = sim.network.agents[n]
+        rt1 = a.routesTime[1] + OPOZNIENIE_NA_MOSCIE(ruch) - opoznienienamoscie(0)
+        #TODO JACEK
+        #SZTUKA PO SZTUCE DODAJEMY - ZAWSZE TAM GDZIE SZYBCIEJ
+    end
+
+    #reurn values of n1 and n2
+end
+
+
 
 
 """
@@ -62,40 +68,40 @@ Contains a `NashEq` for efficiency comaparison purposes
 end
 
 """
-    t_travel(p::ModelParams, nn::AbstractVector{Int})
+    t_travel(p::BidModelParams, nn::AbstractVector{Int})
 
 Travel time for a number of agents occupying each road
 """
-@inline function t_travel(p::ModelParams, nn::AbstractVector{Int})
+@inline function t_travel(p::BidModelParams, nn::AbstractVector{Int})
     v = (p.v_max .- p.v_min) .* (1 .- (nn ./ p.N) ) .+ p.v_min  #velocity
     p.d ./ v
 end
 
 """
-    cost(p::ModelParams, ne::NashEq, bi_ct=p.ct)
+    cost(p::BidModelParams, ne::NashEq, bi_ct=p.ct)
 
 The total cost of travel for a Nash-equilibrum `ne` for a given declared
 bid of agents `bid_ct`
 """
-@inline function cost(p::ModelParams, ne::NashEq, bid_ct::AbstractVector{Float64}=p.ct)
+@inline function cost(p::BidModelParams, ne::NashEq, bid_ct::AbstractVector{Float64}=p.ct)
     [p.cf * ne.tdist + bid_ct[a] * ne.ttime for a in 1:p.N_MAX]
 end
 
 """
-    cost(p::ModelParams, x::Vector{Int}, ts::Vector{Float64}, bid_ct::AbstractVector{Float64}=p.ct)
+    cost(p::BidModelParams, x::Vector{Int}, ts::Vector{Float64}, bid_ct::AbstractVector{Float64}=p.ct)
 
 The total cost of travel
 """
-@inline function cost(p::ModelParams, x::Vector{Int}, ts::Vector{Float64}, bid_ct::AbstractVector{Float64}=p.ct)
+@inline function cost(p::BidModelParams, x::Vector{Int}, ts::Vector{Float64}, bid_ct::AbstractVector{Float64}=p.ct)
     p.cf .* p.d[x .+ 1] .+ bid_ct .* ts[x .+ 1]
 end
 
 """
-    solve_nash_time(p::ModelParams)
+    solve_nash_time(p::BidModelParams)
 
 Finds a time-balanced layout for a two road system described by `p`
 """
-function solve_nash_time(p::ModelParams)::NashEq
+function solve_nash_time(p::BidModelParams)::NashEq
     @assert length(p.N) == 2
     # assume all people travel the second road
     local best_ts = [Inf, 0]
@@ -119,13 +125,13 @@ function solve_nash_time(p::ModelParams)::NashEq
 end
 
 """
-    solve_travel_jump(p::ModelParams, bid_ct=p.ct)::TravelPattern
+    solve_travel_jump(p::BidModelParams, bid_ct=p.ct)::TravelPattern
 
 Finds the optimal travel layout for a given set of parameters and bids.
 This function should be used for testing purposes only, use `solve_travel`
 instead.
 """
-function solve_travel_jump(p::ModelParams, bid_ct=p.ct)::TravelPattern
+function solve_travel_jump(p::BidModelParams, bid_ct=p.ct)::TravelPattern
   optimizer = Juniper.Optimizer
   params = Dict{Symbol,Any}()
   params[:nl_solver] = with_optimizer(Ipopt.Optimizer, print_level=0)
@@ -150,12 +156,12 @@ function solve_travel_jump(p::ModelParams, bid_ct=p.ct)::TravelPattern
 end
 
 """
-    solve_travel(p::ModelParams, bid_ct=p.ct)::TravelPattern
+    solve_travel(p::BidModelParams, bid_ct=p.ct)::TravelPattern
 
 Finds the optimal travel layout for a given set of parameters and bids.
 Should return identical results to `solve_travel` and is 250x faster.
 """
-function solve_travel(p::ModelParams, bid_ct=p.ct; debugdf::Union{DataFrame,Nothing}=nothing)::TravelPattern
+function solve_travel(p::BidModelParams, bid_ct=p.ct; debugdf::Union{DataFrame,Nothing}=nothing)::TravelPattern
     @assert length(p.N) == 2
     local best_x::Vector{Int}
     local best_cost_x::Vector{Float64}
@@ -212,11 +218,11 @@ end
 
 
 """
-    solve_optimal_payment(p::ModelParams, bid_ct::Vector{Float64}=p.ct)
+    solve_optimal_payment(p::BidModelParams, bid_ct::Vector{Float64}=p.ct)
 
 Allocates a set of payments for a given set of bids.
 """
-function solve_optimal_payment(p::ModelParams, bid_ct::Vector{Float64}=p.ct)::PaymentPlan
+function solve_optimal_payment(p::BidModelParams, bid_ct::Vector{Float64}=p.ct)::PaymentPlan
     travp = solve_travel(p, bid_ct)
     nasheq = solve_nash_time(p)
     Δc =   cost(p,nasheq, bid_ct) .- travp.cost
@@ -246,7 +252,7 @@ placed by other market participants.
 Returns:
 NamedTuple{(:bid, :real_cost, :payment),Tuple{Float64,Float64,PaymentPlan}}
 """
-function optimizebid(p::ModelParams, a::Int, bid_ct::AbstractVector{Float64}=p.ct)
+function optimizebid(p::BidModelParams, a::Int, bid_ct::AbstractVector{Float64}=p.ct)
     Δ = (1+rand())/100000 #this ensures that bids are unique across users
     vals = Vector{Float64}(undef, length(bid_ct)+1)
     for i in 1:length(bid_ct)
@@ -280,13 +286,13 @@ end
 
 
 """
-    play_nash(p::ModelParams, start_bid = p.ct; N_STEPS=100)
+    play_nash(p::BidModelParams, start_bid = p.ct; N_STEPS=100)
 
 Plays a Nash bidding game assuming that all bids are public.
 In each turn a single agent evaluates her bidding situation and chooses
 a bid that maximizes her profit.
 """
-function play_nash(p::ModelParams, start_bid = p.ct; N_STEPS=100)
+function play_nash(p::BidModelParams, start_bid = p.ct; N_STEPS=100)
     current_bid = deepcopy(start_bid)
     log = DataFrame(i=Int[], a=Int[], bid = Float64[])
     for i in 1:N_STEPS

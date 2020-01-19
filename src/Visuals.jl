@@ -1,9 +1,8 @@
-function GetLLOfRoute(map::OpenStreetMapX.OSMData, mData::MapData,route::Array{Int64})
+function getLL_of_route(mData::MapData,route::AbstractArray{Int})
     myroute = []
     for nodeID in route
-        latitude = map.nodes[mData.n[nodeID]].lat
-        longitude = map.nodes[mData.n[nodeID]].lon
-        push!(myroute,(latitude,longitude))
+        lla = LLA(mData.nodes[nodeID],mData.bounds)
+        push!(myroute,(lla.lat,lla.lon))
     end
     return myroute
 end
@@ -89,26 +88,28 @@ function OVAGraph(map::OpenStreetMapX.OSMData, mData::MapData, a::Agent)
     println("File Saved!")
 end
 
-function plot_agents(map::OpenStreetMapX.OSMData, mData::MapData, agents::Array{Agent})
-
+function plot_agents(s::Simulation; agentIds=1:min(1000,s.network.agentIDmax))
+    mData = s.network.mapData
     flm = pyimport("folium")
     matplotlib_cm = pyimport("matplotlib.cm")
     matplotlib_colors = pyimport("matplotlib.colors")
     cmap = matplotlib_cm.get_cmap("prism")
     m = flm.Map()
 
-    for n = 1:min(length(agents),1000)
-        LL = GetLLOfRoute(map,mData,agents[n].travelledRoute[1:end])
-        info = "Agent # $(agents[n].id)\n<BR>"*
-                "Length: $(length(agents[n].travelledRoute)) nodes\n<br>" *
-                "From: Node $(agents[n].travelledRoute[1])\n<br>" *
-                "To: Node $(agents[n].travelledRoute[end])\n<br>" *
-                "Time Elapsed $(agents[n].arrivalTime)"
+    for n in agentIds
+        a = s.network.agents[n]
+        myroute = a.routes[a.travelledRoute]
+        LL = getLL_of_route(s.network.mapData, myroute)
+        info = "Agent # $(a.id)\n<BR>"*
+                "Length: $(length(myroute)) nodes\n<br>" *
+                "From: Node $(myroute[1])\n<br>" *
+                "To: Node $(myroute[end])\n<br>" *
+                "Time Elapsed $(a.routesTime[a.travelledRoute])"
         flm.PolyLine(
                 LL,
                 popup=info,
                 tooltip=info,
-                color=matplotlib_colors.to_hex(cmap(n/min(length(agents),10)))
+                color=matplotlib_colors.to_hex(cmap(n/min(maximum(agentIds),10)))
             ).add_to(m)
     end
 
