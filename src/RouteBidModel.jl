@@ -25,23 +25,20 @@ export Simulation
 export Agent
 export Road
 export Intersection
-export SetLL
-export MakeAction!
-export runsim
+export ModelParams
+export runsim!
 export set_spawn_dest!
 export spawn_agent_random!
-export GetNodesOutsideRadius
+export get_nodes_outside_radius
 export get_nodes_in_radius
-export GetNodesBetween
 export load_sim
 export savesim
-export load_sim2
-export savesim2
 export plot_agents
 export create_network_from_file
 export getintersect, get_road_by_nodes, plot_nodes_locations
 export plot_all_paths
-export GetAgentByID
+export get_agent_by_id
+export spawn_num_agents!
 
 include("decls2.jl")
 include("osm_convert.jl")

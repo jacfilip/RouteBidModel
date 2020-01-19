@@ -5,8 +5,8 @@ using RouteBidModel
 using Random
 using OpenStreetMapX
 
-
 Random.seed!(0);
+
 
 path = joinpath("src","maps")
 file = "manhattan_filtered.osm"
@@ -17,8 +17,12 @@ nw = create_network_from_file(path, file)
 set_spawn_dest!(nw,  [553], [847])
 
 Random.seed!(0);
-sim = Simulation(nw, 60 * 60, maxAgents = 1000, dt = 5.0, initialAgents = 500, auctions = false)
-@time runsim(sim)
+const p = ModelParams()
+sim = Simulation(network=nw, p = p)
+spawn_num_agents!(sim, p.initialAgents)
+
+runsim!(sim)
+
 osmmap = OpenStreetMapX.parseOSM(joinpath(path,file))
 crop!(osmmap)
 mData = get_map_data(path, file, only_intersections = true)

@@ -1,6 +1,11 @@
 
-@with_kw mutable struct ModelParams
+@with_kw struct ModelParams
     CoF =  0.15e-3;
+    initialAgents=500
+    maxAgents=500
+    timeMax=Inf
+    maxIter=10
+
     unused_lanes = [
         [532, 1214], #east bridge lane
         [1044, 1045], #east bridge lane
@@ -28,15 +33,16 @@ end
     posY::Float64
     inRoads= Vector{Road}();
     outRoads= Vector{Road}();
-    spawnPoint::Bool
-    destPoint::Bool
-    lat::Float64
-    lon::Float64
+    spawnPoint=false
+    destPoint=false
+    lat=0.0
+    lon=0.0
 end
 
 
 @with_kw mutable struct Agent
     id::Int
+    startNode::Intersection
     destNode::Intersection
     bestRoute=Vector{Int}();
     alterRoute=Vector{Int}();
@@ -55,10 +61,9 @@ end
     intersections=Vector{Intersection}()
     spawns=Vector{Int}()  #points where agents can spawn
     dests=Vector{Int}() #points that can be targets for agents
-    numRoads::Int
+    numRoads = 0
     agents=Dict{Int,Agent}()
     graph::SimpleWeightedDiGraph
-    osmData::OpenStreetMapX.OSMData
     mapData::MapData
     agentCntr=0  #number of current agents
     agentIDmax=0 #maximum agents on map
@@ -67,21 +72,19 @@ end
 
 
 @with_kw mutable struct Simulation
+    p = ModelParams()
     network::Network
-    timeMax::Float64
     timeStep=1.0
     timeElapsed=0.0
-    iter::Int  #step t
-    maxAgents::Int
-    maxIter::Int
-    initialAgents::Int
+    iter = 0  #step t
+
     agentsFinished=Vector{Agent}()
 end
 
 function init_network!(n::Network, coords::Vector{Tuple{Float64,Float64,Float64}})
     n.intersections = Vector{Intersection}(undef,n.graph.weights.m)
     for i in 1:n.graph.weights.m
-        n.intersections[i] = Intersection(i, coords[i][1], coords[i][2])
+        n.intersections[i] = Intersection(nodeID=i, posX=coords[i][1], posY=coords[i][2])
         n.intersections[i].lat = LLA(ENU(n.intersections[i].posX, n.intersections[i].posY, 0), n.mapData.bounds).lat
         n.intersections[i].lon = LLA(ENU(n.intersections[i].posX, n.intersections[i].posY, 0), n.mapData.bounds).lon
     end
@@ -112,20 +115,18 @@ function init_network!(n::Network, coords::Vector{Tuple{Float64,Float64,Float64}
 end
 
 
-
-Network(g::SimpleWeightedDiGraph, m::OpenStreetMapX.MapData) = (
-     Network(graph=g,[(i.east, i.north, i.up) for i in coords], mapData=m))
-
 function convert_to_network(m::MapData)::Network
     g =  SimpleWeightedDiGraph()
     add_vertices!(g, length(m.n))
     for edge in m.e
         #    dist = DistanceENU(m.nodes[edge[1]], m.nodes[edge[2]])
         dist = m.w[m.v[edge[1]], m.v[edge[2]]]
+        println("edge : ",edge)
+        println(m.v[edge[1]], " ", m.v[edge[2]])
         add_edge!(g, m.v[edge[1]], m.v[edge[2]], dist)
         add_edge!(g, m.v[edge[2]], m.v[edge[1]], dist)
     end
-    net =  Network(g, m)
+    net =  Network(graph=g, mapData=m)
     coords = [m.nodes[m.n[i]] for i in 1:length(m.n)]
     init_network!(net, [(i.east, i.north, i.up) for i in coords])
     return net
@@ -241,16 +242,15 @@ function can_fit_at_road(a::Agent, r::Road)::Bool
     end
 end
 
-function recalculate_road!(r::Road, p::ModelParams) #Set Velocity function
+function recalculate_road!(s::Simulation, r::Road) #Set Velocity function
     #velocity calculated only on active lanes of bridges
-    if  r.bNode in p.bridgnodes
+    if  r.bNode in s.p.bridgnodes
         r.curVelocity = min(lin_k_f_model(length(r.agents), r.capacity, r.vMax, r.vMin), r.vMax)
-    elseif r.bNode in p.nodes_to_remove
+    elseif r.bNode in s.p.nodes_to_remove
         r.curVelocity = 0
     else
         r.curVelocity = r.vMax
     end
-
     #Set the current velocity all cars are going on this road based on length, number of agents on the road (congestion), etc.
     r.ttime = r.length / r.curVelocity
 end
@@ -275,8 +275,8 @@ function spawn_agents!(s::Simulation, dt::Real, λ = 20.0)
     end
 end
 
-function spawn_num_agents(s::Simulation, num::Int)
-    num = min(num, s.maxAgents - s.network.agentCntr)
+function spawn_num_agents!(s::Simulation, num::Int)
+    num = min(num, s.p.maxAgents - s.network.agentCntr)
     for i in 1:num
         spawn_agent_random!(s.network, s.timeElapsed)
     end
@@ -284,8 +284,8 @@ end
 
 
 function spawn_agent_random!(n::Network, time::Float64 = 0.0)
-    start = Int64
-    dest = Int64
+    local start::Int64
+    local dest::Int64
     create_agent = false
 
     while create_agent == false
@@ -297,13 +297,13 @@ function spawn_agent_random!(n::Network, time::Float64 = 0.0)
     σ = 0.1    #standard deviation as a share of expected travel time
     ϵ = 0.1    #starting time glut as a share of travel time
 
-    dt = estimate_time(n, start, dest)
+    #dt = estimate_time(n, start, dest)
 
-    arrivT = rand(Distributions.Normal(time + (1.0 + ϵ) * dt, σ * dt))
+    #arrivT = rand(Distributions.Normal(time + (1.0 + ϵ) * dt, σ * dt))
 
     n.agentIDmax += 1
     n.agentCntr += 1
-    push!(n.agents, Agent(n.agentIDmax, n.intersections[start],n.intersections[dest],n.graph, time, arrivT)) #Randomly spawn an agent within the outer region
+    push!(n.agents, Agent(n.agentIDmax, n.intersections[start],n.intersections[dest],n.graph, time)) #Randomly spawn an agent within the outer region
 end
 
 
@@ -348,9 +348,8 @@ function set_shortest_path_both_bridges!(a::Agent, nw::Network)::Real
 end
 
 
-function runsim(s::Simulation, runTime::Int = 0)::Bool
-    spawn_num_agents(s, s.initialAgents)
-
+function runsim!(s::Simulation, runTime::Int = 0)
+    #agents have been spawned in Simulation constructor
     return true
 end
 
