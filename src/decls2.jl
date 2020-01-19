@@ -7,9 +7,9 @@
     maxIter=10
 
     unused_lanes = [
-        [532, 1214], #east bridge lane
+        [1214, 532], #east bridge lane
         [1044, 1045], #east bridge lane
-        [747, 635]   #west bridge lane
+        [635, 747]   #west bridge lane
     ]
     nodes_to_remove = [e[1] for e in unused_lanes]
 
@@ -29,6 +29,7 @@ end
 
 @with_kw mutable struct Intersection
     nodeID::Int
+    osmNodeID::Int
     posX::Float64
     posY::Float64
     inRoads= Vector{Road}();
@@ -44,15 +45,16 @@ end
     id::Int
     startNode::Intersection
     destNode::Intersection
-    bestRoute=Vector{Int}();
-    alterRoute=Vector{Int}();
-    travelledRoute=Vector{Int}();
-    timeEstim::Float64
+    routes=[Vector{Int}() for i in 1:2]
+    travelledRoute=rand(1:2)
+    timeEstim=0.0
     deployTime=0.0
-    arrivalTime::Float64
-    valueOfTime::Float64
-    bestRouteCost::Float64
-    alterRouteCost::Float64
+    arrivalTime::Union{Nothing,Float64}=nothing
+    valueOfTime=maximum([24.52/60.0/60.0+randn()*3.0/60.0/60.0, 0.0])
+    routesCost=[0.0, 0.0]
+    routesDist=[0.0, 0.0]
+    routesTime=[0.0, 0.0]
+
 end
 
 
@@ -66,7 +68,7 @@ end
     graph::SimpleWeightedDiGraph
     mapData::MapData
     agentCntr=0  #number of current agents
-    agentIDmax=0 #maximum agents on map
+    agentIDmax=0 #maximum ID of agents on map
 end
 
 
@@ -84,7 +86,7 @@ end
 function init_network!(n::Network, coords::Vector{Tuple{Float64,Float64,Float64}})
     n.intersections = Vector{Intersection}(undef,n.graph.weights.m)
     for i in 1:n.graph.weights.m
-        n.intersections[i] = Intersection(nodeID=i, posX=coords[i][1], posY=coords[i][2])
+        n.intersections[i] = Intersection(nodeID=i, osmNodeID=n.mapData.n[i], posX=coords[i][1], posY=coords[i][2])
         n.intersections[i].lat = LLA(ENU(n.intersections[i].posX, n.intersections[i].posY, 0), n.mapData.bounds).lat
         n.intersections[i].lon = LLA(ENU(n.intersections[i].posX, n.intersections[i].posY, 0), n.mapData.bounds).lon
     end
@@ -121,8 +123,6 @@ function convert_to_network(m::MapData)::Network
     for edge in m.e
         #    dist = DistanceENU(m.nodes[edge[1]], m.nodes[edge[2]])
         dist = m.w[m.v[edge[1]], m.v[edge[2]]]
-        println("edge : ",edge)
-        println(m.v[edge[1]], " ", m.v[edge[2]])
         add_edge!(g, m.v[edge[1]], m.v[edge[2]], dist)
         add_edge!(g, m.v[edge[2]], m.v[edge[1]], dist)
     end
@@ -275,10 +275,21 @@ function spawn_agents!(s::Simulation, dt::Real, λ = 20.0)
 end
 
 function spawn_num_agents!(s::Simulation, num::Int)
+    maps = [deepcopy(s.network.mapData), deepcopy(s.network.mapData)]
+    maps[1].w[s.p.east_bridge_lane...] = Inf
+    maps[2].w[s.p.west_bridge_lane...] = Inf
     num = min(num, s.p.maxAgents - s.network.agentCntr)
     for i in 1:num
-        spawn_agent_random!(s.network, s.timeElapsed)
+        a = spawn_agent_random!(s.network, s.timeElapsed)
+        s.network.agentIDmax += 1
+        s.network.agentCntr += 1
+        s.network.agents[s.network.agentIDmax]=a
+        for i in 1:2
+            a.routes[i], a.routesDist[i], a.routesTime[i] =
+                OpenStreetMapX.fastest_route(maps[i],a.startNode.osmNodeID, a.destNode.osmNodeID)
+        end
     end
+
 end
 
 
@@ -292,17 +303,7 @@ function spawn_agent_random!(n::Network, time::Float64 = 0.0)
         dest = rand(n.dests)
         create_agent = is_route_possible(n,start,dest)
     end
-
-    σ = 0.1    #standard deviation as a share of expected travel time
-    ϵ = 0.1    #starting time glut as a share of travel time
-
-    #dt = estimate_time(n, start, dest)
-
-    #arrivT = rand(Distributions.Normal(time + (1.0 + ϵ) * dt, σ * dt))
-
-    n.agentIDmax += 1
-    n.agentCntr += 1
-    push!(n.agents, Agent(n.agentIDmax, n.intersections[start],n.intersections[dest],n.graph, time)) #Randomly spawn an agent within the outer region
+    return Agent(id=n.agentIDmax, startNode=n.intersections[start],destNode=n.intersections[dest], deployTime=time) #Randomly spawn an agent within the outer region
 end
 
 
@@ -326,7 +327,7 @@ function set_shortest_path_both_bridges!(a::Agent, nw::Network)::Real
     ### correct Disktra PSZ pszufe
 
     # TODO path westerm + path eastern
-    empty!(a.bestRoute)
+    empty!(a.route1)
     nxtNode = a.atNode != nothing ? a.atNode.nodeID : a.atRoad.fNode
 
     s_star = LightGraphs.dijkstra_shortest_paths(a.reducedGraph, a.destNode.nodeID) #Find the shortest path between the node currently at and destination node
@@ -336,11 +337,11 @@ function set_shortest_path_both_bridges!(a::Agent, nw::Network)::Real
         path = s_star.parents
         while nextNode != 0
             nextNode = path[nextNode]
-            push!(a.bestRoute, nextNode)
+            push!(a.route1, nextNode)
         end
-        pop!(a.bestRoute)
-        a.timeEstim = estimate_timeQuick(nw, a.bestRoute)
-        return a.bestRouteCost = dist
+        pop!(a.route1)
+        a.timeEstim = estimate_timeQuick(nw, a.route1)
+        return a.route1Cost = dist
     else
         return Inf
     end
