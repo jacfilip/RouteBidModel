@@ -135,7 +135,6 @@ end
 Network(map::MapData) = return  convert_to_network(map)
 
 
-
 function set_spawn_dest!(n::Network, spawns::Vector{Int}, dests::Vector{Int})
     empty!(n.spawns)
     for i in spawns
