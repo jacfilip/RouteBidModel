@@ -24,7 +24,7 @@ end
 
 spawn_num_agents!(sim, p.initialAgents)
 
-
+ns = calculate_nash(sim)
 
 runsim!(sim)
 #savesim(sim, "sim_na_2k_t=90m")

@@ -2,6 +2,9 @@
 """
 Represents parameters for a two-road transportation system
 """
+
+
+
 @with_kw struct BidModelParams
     N_MAX = 251   #number of agents
     ct =  vcat(
@@ -16,22 +19,43 @@ Represents parameters for a two-road transportation system
 end
 
 function calculate_nash(s::Simulation)
-    N_MAX = s.network.agentIDmax,
-    ct = [s.network.agents[i].valueOfTime for i in 1:s.network.agentIDmax],
-    cf = s.p.CoF,
+    N_MAX = s.network.agentIDmax
+    ct = [s.network.agents[i].valueOfTime for i in 1:s.network.agentIDmax]
+    cf = s.p.CoF
     travel_counts = [0, 0]
 
-    for n in 1:N_MAX    # gdy reps > 1 to kolejnosc losowa
-        a = sim.network.agents[n]
-        rt1 = a.routesTime[1] + OPOZNIENIE_NA_MOSCIE(ruch) - opoznienienamoscie(0)
-        #TODO JACEK
-        #SZTUKA PO SZTUCE DODAJEMY - ZAWSZE TAM GDZIE SZYBCIEJ
-    end
+    roads = [get_road_by_nodes(s.network, s.p.east_bridge_lane...), get_road_by_nodes(s.network, s.p.west_bridge_lane...)]
 
-    #reurn values of n1 and n2
+    empty!(roads[1].agents)
+    empty!(roads[2].agents)
+
+    for n in 1:N_MAX
+        a = s.network.agents[n]
+        times = travel_times(s, a)
+        costs = a.valueOfTime .* times + s.p.CoF .* [roads[1].rlen, roads[2].rlen]
+        if costs[1] < costs[2]
+            travel_counts[1] += 1
+            push!(roads[1].agents, n)
+        else
+            travel_counts[2] += 1
+            push!(roads[2].agents, n)
+        end
+    end
+    return travel_counts
 end
 
+function travel_times(s::Simulation, a::Agent)
+    p = s.p
 
+    #dists = s.network.mapData.e[p.east_bridge_lane...], s.network.mapData.e[p.west_bridge_lane...]
+    r = [get_road_by_nodes(s.network, p.east_bridge_lane...), get_road_by_nodes(s.network, p.west_bridge_lane...)]
+
+    t_mins = [r[i].rlen / r[i].vMax for i in 1:2]
+    #TODO Add capacity calculations
+    t_cur = [r[i].rlen / lin_k_f_model(length(r[i].agents), r[i].cap, r[i].vMax) for i in 1:2]
+
+    return a.routesTime .+ t_cur .- t_mins
+end
 
 
 """

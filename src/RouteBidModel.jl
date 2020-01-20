@@ -30,6 +30,7 @@ export Agent
 export Road
 export Intersection
 export ModelParams
+export SimpleWeightedDiGraph
 export runsim!
 export set_spawn_dest!
 export spawn_agent_random!
@@ -55,6 +56,8 @@ export play_nash
 export cost
 export t_travel
 export BidModelParams
+export travel_times
+export calculate_nash
 
 
 include("decls2.jl")

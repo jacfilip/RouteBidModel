@@ -1,8 +1,8 @@
 
 @with_kw struct ModelParams
     CoF =  0.15e-3;
-    initialAgents=500
-    maxAgents=500
+    initialAgents=700
+    maxAgents=700
     timeMax=Inf
     maxIter=10
 
@@ -24,6 +24,7 @@ end
     bNode::Int
     fNode::Int
     vMax::Float64
+    cap::Int
     ttime=rlen/vMax
 end
 
@@ -107,7 +108,7 @@ function init_network!(n::Network, coords::Vector{Tuple{Float64,Float64,Float64}
             if n.graph.weights[i, j] != 0
                 r += 1
                 n.roads[r] = Road(rlen=n.graph.weights[i, j], bNode=i, fNode=j,
-                    vMax=(i <= vels.m && j <= vels.n) && vels[i,j] > 0 ? vels[i, j] : 40 / 3.6)
+                    vMax=(i <= vels.m && j <= vels.n) && vels[i,j] > 0 ? vels[i, j] : 40 / 3.6, cap = ceil(n.graph.weights[i, j] / 2.5))
                 push!(n.intersections[i].outRoads, n.roads[r])
                 push!(n.intersections[j].inRoads, n.roads[r])
             end
