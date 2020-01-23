@@ -16,20 +16,20 @@
     east_bridge_lane = [445, 446] #OK
     west_bridge_lane = [965, 112] #OK
     bridgenodes = [east_bridge_lane[1], west_bridge_lane[1]]
-    bridge_capaciy = [Int(initialAgents*3/4), Int(initialAgents*3/4)]
+    bridge_capacity = [Int(initialAgents*3/4), Int(initialAgents*3/4)]
                         #east, west max number of vehicles
     b_vmin = [10,10]
     b_vmax = [90,90]
 end
 
 @with_kw struct Road
-    rlen::Float64
+    rlen::Float64 #m
     agents=Set{Int}()
     bNode::Int
     fNode::Int
-    vMax::Float64
+    vMax::Float64 #m/s
     cap::Int
-    ttime=rlen/vMax
+    ttime=rlen/vMax #s
 end
 
 @with_kw mutable struct Intersection
@@ -55,7 +55,7 @@ end
     timeEstim=0.0
     deployTime=0.0
     arrivalTime::Union{Nothing,Float64}=nothing
-    valueOfTime=maximum([24.52/60.0/60.0+randn()*3.0/60.0/60.0, 0.0])
+    valueOfTime=maximum([24.52 / 60.0 / 60.0 + randn() * 3.0 / 60.0 / 60.0, 0.0])
     routesCost=[0.0, 0.0]
     routesDist=[0.0, 0.0]
     routesTime=[0.0, 0.0]

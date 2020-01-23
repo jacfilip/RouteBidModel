@@ -9,7 +9,7 @@ Represents parameters for a two-road transportation system
     N_MAX = 30   #number of agents
     ct =  vcat(
        [10 + (rand() - 0.5) * 10 for i in 1:3],
-       [10 + (rand() - 0.5) * 10 for i in 4:N_MAX]) #./ 3600
+       [10 + (rand() - 0.5) * 10 for i in 4:N_MAX]) ./ 3600 #cost of time $/s
     #real cost of time USDs/s for each agent
     cf = 2.1 / 1000 # cost of fuel USD/m
     d = [2786.0, 3238.0]  #road length m
@@ -20,8 +20,8 @@ end
 
 function calculate_nash(s::Simulation)
     N_MAX = s.network.agentIDmax
-    ct = [s.network.agents[i].valueOfTime for i in 1:s.network.agentIDmax]
-    cf = s.p.CoF
+    ct = [s.network.agents[i].valueOfTime for i in 1:s.network.agentIDmax] #$/s
+    cf = s.p.CoF #$/m
     travel_counts = [0, 0]
 
     roads = [get_road_by_nodes(s.network, s.p.east_bridge_lane...), get_road_by_nodes(s.network, s.p.west_bridge_lane...)]
@@ -29,28 +29,39 @@ function calculate_nash(s::Simulation)
     empty!(roads[1].agents)
     empty!(roads[2].agents)
 
+    x = Vector{Int}(undef, N_MAX)
+    cost_agent = Vector{Float64}(undef, N_MAX) #$/s
+    time_agent = Vector{Float64}(undef, N_MAX) #s
+
     for n in 1:N_MAX
         a = s.network.agents[n]
-        times = travel_times(s, a)
-        costs = a.valueOfTime .* times + s.p.CoF .* [roads[1].rlen, roads[2].rlen]
+        times = travel_times(s, a) #s
+        costs = a.valueOfTime .* times + s.p.CoF .* a.routesDist
         if costs[1] < costs[2]
             travel_counts[1] += 1
             push!(roads[1].agents, n)
+            x[n] = 0
+            cost_agent[n] = costs[1] #$/s
+            time_agent[n] =  times[1] #s
         else
             travel_counts[2] += 1
             push!(roads[2].agents, n)
+            x[n] = 1
+            cost_agent[n] = costs[2] #$/s
+            time_agent[n] = times[2] #s
         end
     end
-    return travel_counts
+
+    return TravelPattern(x, cost_agent, travel_counts..., time_agent)
 end
 
 function calculate_optimal_jump(s::Simulation,
         bid_ct=[s.network.agents[i].valueOfTime for i in 1:s.network.agentIDmax])
     N_MAX = s.network.agentIDmax
-    N = s.p.bridge_capaciy
-    cf = s.p.CoF
+    N = s.p.bridge_capacity
+    cf = s.p.CoF #$/m
 
-    blens = [get_road_by_nodes(s.network, s.p.east_bridge_lane...).rlen, get_road_by_nodes(s.network, s.p.west_bridge_lane...).rlen]
+    blens = [get_road_by_nodes(s.network, s.p.east_bridge_lane...).rlen, get_road_by_nodes(s.network, s.p.west_bridge_lane...).rlen] #m
     bts = blens./s.p.b_vmax # times of travel through bridges with max speed
     optimizer = Juniper.Optimizer
     params = Dict{Symbol,Any}()
@@ -70,7 +81,7 @@ function calculate_optimal_jump(s::Simulation,
     println("Cost: $(objective_value(m))")
     println("n0=$(value(n0))")
     println([round(value(x[i])) for i in 1:N_MAX])
-    #this cost array here contains all costs from the objective above
+    #this cost array here contains all costs [in $] from the objective above
     cost = [trunc(Int, round(value(x[i]))) == 0 ? cf * as[i].routesDist[1] + bid_ct[i] * (blens[1] / ((s.p.b_vmax[1] - s.p.b_vmin[1]) * (1 - value(n0) / N[1]) + s.p.b_vmin[1]) - bts[1] + as[i].routesTime[1]) :
      cf * as[i].routesDist[2] + bid_ct[i] * (blens[2] / ((s.p.b_vmax[2] - s.p.b_vmin[2]) * (1 - value(n1) / N[2]) + s.p.b_vmin[2]) - bts[2] + as[i].routesTime[2]) for i in 1:N_MAX]
     TravelPattern([trunc(Int, round(value(x[i]))) for i in 1:N_MAX], cost, Int(round(value(n0))), Int(round(value(n1))),[])
@@ -82,14 +93,14 @@ end
 function travel_times(s::Simulation, a::Agent)
     p = s.p
 
-    #dists = s.network.mapData.e[p.east_bridge_lane...], s.network.mapData.e[p.west_bridge_lane...]
     r = [get_road_by_nodes(s.network, p.east_bridge_lane...), get_road_by_nodes(s.network, p.west_bridge_lane...)]
 
-    t_mins = [r[i].rlen / r[i].vMax for i in 1:2]
-    #TODO Add capacity calculations
-    t_cur = [r[i].rlen / lin_k_f_model(length(r[i].agents), r[i].cap, r[i].vMax) for i in 1:2]
+    t_mins = [r[i].rlen / r[i].vMax for i in 1:2] #travel times at empty brides [s]
 
-    return a.routesTime .+ t_cur .- t_mins
+    #current travel times through the brides [s]
+    t_cur = [r[i].rlen / lin_k_f_model(length(r[i].agents), p.bridge_capacity[i], r[i].vMax) for i in 1:2]
+
+    return a.routesTime .+ t_cur .- t_mins #s
 end
 
 
