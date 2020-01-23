@@ -24,6 +24,8 @@ end
 
 spawn_num_agents!(sim, p.initialAgents)
 
+opty = calculate_optimal_jump(sim)
+
 ns = calculate_nash(sim)
 
 runsim!(sim)

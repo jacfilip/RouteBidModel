@@ -6,14 +6,14 @@ Represents parameters for a two-road transportation system
 
 
 @with_kw struct BidModelParams
-    N_MAX = 251   #number of agents
+    N_MAX = 30   #number of agents
     ct =  vcat(
        [10 + (rand() - 0.5) * 10 for i in 1:3],
        [10 + (rand() - 0.5) * 10 for i in 4:N_MAX]) #./ 3600
     #real cost of time USDs/s for each agent
     cf = 2.1 / 1000 # cost of fuel USD/m
     d = [2786.0, 3238.0]  #road length m
-    N = [250, 250]        #road max capacity
+    N = [20, 20]        #road max capacity
     v_min  = [1 /3.6, 1 / 3.6]  #minimal velocity m/s
     v_max = [60 / 3.6, 50 / 3.6] #maximal velocity m/s
 end
@@ -43,6 +43,41 @@ function calculate_nash(s::Simulation)
     end
     return travel_counts
 end
+
+function calculate_optimal_jump(s::Simulation,
+        bid_ct=[s.network.agents[i].valueOfTime for i in 1:s.network.agentIDmax])
+    N_MAX = s.network.agentIDmax
+    N = s.p.bridge_capaciy
+    cf = s.p.CoF
+
+    blens = [get_road_by_nodes(s.network, s.p.east_bridge_lane...).rlen, get_road_by_nodes(s.network, s.p.west_bridge_lane...).rlen]
+    bts = blens./s.p.b_vmax # times of travel through bridges with max speed
+    optimizer = Juniper.Optimizer
+    params = Dict{Symbol,Any}()
+    params[:nl_solver] = with_optimizer(Ipopt.Optimizer, print_level=0)
+    m = Model(with_optimizer(optimizer, params));
+    @variable(m, x[1:N_MAX], Bin)
+    @variable(m, 0 <= n0 <= N[1], Int)
+    @variable(m, 0 <= n1 <= N[2], Int)
+    @constraint(m, sum(x) == n1)
+    @constraint(m, n0 + n1 == N_MAX)
+    as = s.network.agents
+    @NLobjective(m, Min, sum(
+     ( (1 - x[i])  *  (cf * as[i].routesDist[1] + bid_ct[i] * (blens[1] / ((s.p.b_vmax[1] - s.p.b_vmin[1]) * (1 - n0 / N[1]) + s.p.b_vmin[1]) - bts[1] + as[i].routesTime[1])  )
+           + x[i]  *  (cf * as[i].routesDist[2] + bid_ct[i] * (blens[2] / ((s.p.b_vmax[2] - s.p.b_vmin[2]) * (1 - n1 / N[2]) + s.p.b_vmin[2]) - bts[2] + as[i].routesTime[2])  ) )  for i in 1:N_MAX))
+    optimize!(m)
+    termination_status(m)
+    println("Cost: $(objective_value(m))")
+    println("n0=$(value(n0))")
+    println([round(value(x[i])) for i in 1:N_MAX])
+    #this cost array here contains all costs from the objective above
+    cost = [trunc(Int, round(value(x[i]))) == 0 ? cf * as[i].routesDist[1] + bid_ct[i] * (blens[1] / ((s.p.b_vmax[1] - s.p.b_vmin[1]) * (1 - value(n0) / N[1]) + s.p.b_vmin[1]) - bts[1] + as[i].routesTime[1]) :
+     cf * as[i].routesDist[2] + bid_ct[i] * (blens[2] / ((s.p.b_vmax[2] - s.p.b_vmin[2]) * (1 - value(n1) / N[2]) + s.p.b_vmin[2]) - bts[2] + as[i].routesTime[2]) for i in 1:N_MAX]
+    TravelPattern([trunc(Int, round(value(x[i]))) for i in 1:N_MAX], cost, Int(round(value(n0))), Int(round(value(n1))),[])
+
+end
+
+
 
 function travel_times(s::Simulation, a::Agent)
     p = s.p

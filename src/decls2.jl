@@ -16,6 +16,10 @@
     east_bridge_lane = [445, 446] #OK
     west_bridge_lane = [965, 112] #OK
     bridgenodes = [east_bridge_lane[1], west_bridge_lane[1]]
+    bridge_capaciy = [Int(initialAgents*3/4), Int(initialAgents*3/4)]
+                        #east, west max number of vehicles
+    b_vmin = [10,10]
+    b_vmax = [90,90]
 end
 
 @with_kw struct Road
@@ -72,6 +76,11 @@ end
     agentIDmax=0 #maximum ID of agents on map
 end
 
+
+function network_route_len(n::Network, nodeix1::Int, nodeix2::Int)
+    return OpenStreetMapX.fastest_route(n.mapData, n.mapData.n[nodeix1],
+                                    n.mapData.n[nodeix2])[2]
+end
 
 
 @with_kw mutable struct Simulation

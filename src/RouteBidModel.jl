@@ -22,7 +22,7 @@ using LinearAlgebra
 using Ipopt
 using DelimitedFiles
 using Statistics
-
+using Juniper
 
 export Network
 export Simulation
@@ -58,7 +58,8 @@ export t_travel
 export BidModelParams
 export travel_times
 export calculate_nash
-
+export network_route_len
+export calculate_optimal_jump
 
 include("decls2.jl")
 include("osm_convert.jl")
