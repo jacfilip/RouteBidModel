@@ -1,8 +1,9 @@
 function getLL_of_route(mData::MapData,route::AbstractArray{Int})
     myroute = []
+    jitter = 1e-4
     for nodeID in route
         lla = LLA(mData.nodes[nodeID],mData.bounds)
-        push!(myroute,(lla.lat,lla.lon))
+        push!(myroute,(lla.lat + jitter * randn(),lla.lon + jitter * randn()))
     end
     return myroute
 end
