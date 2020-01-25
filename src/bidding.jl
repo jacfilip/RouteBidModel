@@ -45,17 +45,17 @@ function calculate_nash(s::Simulation)
 end
 
 function calculate_optimal_jump(s::Simulation,
-        bid_ct=[s.network.agents[i].valueOfTime for i in 1:s.network.agentIDmax])
+    bid_ct=[s.network.agents[i].valueOfTime for i in 1:s.network.agentIDmax])
     N_MAX = s.network.agentIDmax
     N = s.p.bridge_capaciy
     cf = s.p.CoF
 
     blens = [get_road_by_nodes(s.network, s.p.east_bridge_lane...).rlen, get_road_by_nodes(s.network, s.p.west_bridge_lane...).rlen]
     bts = blens./s.p.b_vmax # times of travel through bridges with max speed
-    optimizer = Juniper.Optimizer
     params = Dict{Symbol,Any}()
     params[:nl_solver] = with_optimizer(Ipopt.Optimizer, print_level=0)
-    m = Model(with_optimizer(optimizer, params));
+    params[:log_levels] = Symbol[]
+    m = Model(with_optimizer(Juniper.Optimizer, params));
     @variable(m, x[1:N_MAX], Bin)
     @variable(m, 0 <= n0 <= N[1], Int)
     @variable(m, 0 <= n1 <= N[2], Int)
@@ -98,7 +98,8 @@ Represents result of an optimization run on a set of model parameters
 """
 @with_kw struct TravelPattern
     x::Vector{Int} #allocation for each traffic participant
-    cost::Vector{Float64} # cost occured by each agent
+    cost::Vector{Float64} # cost occured by each agent /with regards to bids/
+    cost_real = Float64[] #real cost occured by each agent
     n0::Int # number of agents taking the first road
     n1::Int # number of agents taking the second road
     ts = Float64[] # travel times for both roads
@@ -132,6 +133,7 @@ end
 Travel time for a number of agents occupying each road
 """
 @inline function t_travel(p::BidModelParams, nn::AbstractVector{Int})
+    @assert all(nn .<= p.N) "The number of travelling agents $nn exceeded the capacity $(p.N)"
     v = (p.v_max .- p.v_min) .* (1 .- (nn ./ p.N) ) .+ p.v_min  #velocity
     p.d ./ v
 end
@@ -165,7 +167,7 @@ function solve_nash_time(p::BidModelParams)::NashEq
     # assume all people travel the second road
     local best_ts = [Inf, 0]
     local best_ns
-    for i=0:p.N_MAX
+    for i=(p.N_MAX-p.N[2]):p.N[1]
         ns = [i, p.N_MAX-i]
         ts = t_travel(p,ns)
         if  abs(ts[2]-ts[1]) < abs(best_ts[1]-best_ts[2])
@@ -191,10 +193,10 @@ This function should be used for testing purposes only, use `solve_travel`
 instead.
 """
 function solve_travel_jump(p::BidModelParams, bid_ct=p.ct)::TravelPattern
-  optimizer = Juniper.Optimizer
   params = Dict{Symbol,Any}()
   params[:nl_solver] = with_optimizer(Ipopt.Optimizer, print_level=0)
-  m = Model(with_optimizer(optimizer, params));
+  params[:log_levels] = Symbol[]
+  m = Model(with_optimizer(Juniper.Optimizer, params));
   @variable(m, x[1:p.N_MAX], Bin)
   @variable(m, 0 <= n0 <= p.N[1], Int)
   @variable(m, 0 <= n1 <= p.N[2], Int)
@@ -206,12 +208,9 @@ function solve_travel_jump(p::BidModelParams, bid_ct=p.ct)::TravelPattern
   for i in 1:p.N_MAX))
   optimize!(m)
   termination_status(m)
-  println("Cost: $(objective_value(m))")
-  println("n0=$(value(n0))")
-  println([round(value(x[i])) for i in 1:p.N_MAX])
   cost = [trunc(Int, round(value(x[i]))) == 0 ? (p.cf * p.d[1] + bid_ct[i] * p.d[1] / ((p.v_max[1] - p.v_min[1]) * (1 - value(n0) / p.N[1]) + p.v_min[1])) :
    (p.cf * p.d[2] + bid_ct[i] * p.d[2] / ((p.v_max[2] - p.v_min[2]) * (1 - value(n1) / p.N[2]) + p.v_min[2])) for i in 1:p.N_MAX]
-  TravelPattern([trunc(Int, round(value(x[i]))) for i in 1:p.N_MAX], cost, Int(round(value(n0))), Int(round(value(n1))),[])
+  TravelPattern(x=round.(Int,value.(x)), cost=cost, n0=round(Int,value(n0)), n1=round(Int,value(n1)),ts=[])
 end
 
 """
@@ -230,14 +229,17 @@ function solve_travel(p::BidModelParams, bid_ct=p.ct; debugdf::Union{DataFrame,N
     bid_ct_ixs = sortperm(bid_ct, rev=true)
     #this is used to reverse mapping to sorted values
     rev_bid_ct_ixs = last.(sort!(bid_ct_ixs .=> 1:length(bid_ct_ixs)))
-    for i=0:p.N_MAX
+    for i in 1:p.N_MAX
         # agents taking: first road, second road
         z = vcat(zeros(Int, i), ones(Int, p.N_MAX-i))
         for flip in [false, true]
-            x_temp = flip ? (1 .- z) : z
-            x = x_temp[rev_bid_ct_ixs]
             ns = [i, p.N_MAX-i]
             flip && reverse!(ns)
+            !(ns[1] in (p.N_MAX-p.N[2]):p.N[1]) && continue
+            x_temp = flip ? (1 .- z) : z
+            #println(flip," ",x_temp)
+            x = x_temp[rev_bid_ct_ixs]
+            #println(flip," ",x)
             @assert length(x) - sum(x) == ns[1]
             @assert sum(x) == ns[2]
             ts = t_travel(p, ns)
@@ -255,7 +257,7 @@ function solve_travel(p::BidModelParams, bid_ct=p.ct; debugdf::Union{DataFrame,N
         end
     end
     n₁ = sum(best_x)
-    TravelPattern(best_x, best_cost_x, p.N_MAX-n₁, n₁,best_ts)
+    TravelPattern(x=best_x, cost=best_cost_x, cost_real=cost(p, best_x , best_ts, p.ct ), n0=p.N_MAX-n₁, n1=n₁, ts=best_ts)
 end
 
 """
