@@ -1,5 +1,5 @@
 
-@with_kw struct ModelParams
+@with_kw mutable struct ModelParams
     CoF =  0.15e-3;
     initialAgents=700
     maxAgents=700
@@ -436,4 +436,40 @@ function load_sim(path::AbstractString, filename::AbstractString)::Simulation
     sim = deserialize(f)
     close(f)
     return sim
+end
+
+function solve_scenario(nw::Network, agents_num::Int, cot::Vector{Float64}, seed::Int = 0)
+    Random.seed!(seed)
+    p = ModelParams()
+    p.initialAgents = p.maxAgents = agents_num
+    sim = Simulation(network=nw, p = p)
+    for unused_lane in p.unused_lanes
+        sim.network.mapData.w[unused_lane...] = Inf
+    end
+    spawn_num_agents!(sim, p.initialAgents)
+    [nw.agents[i].valueOfTime = cot[i] for i in 1:agents_num]
+
+    opt = calculate_optimal_jump(sim)
+    nash = calculate_nash(sim)
+
+    df = DataFrame(agent = Int[], cot = Float64[], x_ne = Int[], t_ne = Float64[], cost_ne = Float64[], x_opt = Int[], t_opt = Float64[], cost_opt = Float64[])
+
+    v1 = nw.agents[1].valueOfTime
+    v7 = nash.x[1]
+    v2 = nash.ts[1]
+    v3 = nash.cost_real[1]
+    v4 = opt.x[1]
+    v5 = opt.ts[1]
+    v6 = opt.cost_real[1]
+
+    for i in 1:agents_num
+        push!(df, Dict(:agent => i, :cot => nw.agents[i].valueOfTime,
+            :x_ne => nash.x[i], :t_ne => nash.ts[i], :cost_ne => nash.cost_real[i],
+            :x_opt => opt.x[i], :t_opt => opt.ts[i], :cost_opt => opt.cost_real[i]))
+    end
+    return df
+end
+
+function solve_scenario(nw::Network, agents_num::Int, cot_dev_dph::Float64 = 3.0, cot_mean_dph::Float64 = 24.0, seed::Int = 0)
+    return solve_scenario(nw, agents_num, (cot_mean_dph .+ randn(agents_num) .* cot_dev_dph) ./ 3600.0, seed)
 end

@@ -52,7 +52,8 @@ function calculate_nash(s::Simulation)
         end
     end
 
-    return TravelPattern(x, cost_agent, travel_counts..., time_agent)
+    #TODO resolve optimal payments
+    return TravelPattern(x, cost_agent, cost_agent, travel_counts..., time_agent)
 end
 
 function calculate_optimal_jump(s::Simulation,
@@ -84,7 +85,8 @@ function calculate_optimal_jump(s::Simulation,
     #this cost array here contains all costs [in $] from the objective above
     cost = [trunc(Int, round(value(x[i]))) == 0 ? cf * as[i].routesDist[1] + bid_ct[i] * (blens[1] / ((s.p.b_vmax[1] - s.p.b_vmin[1]) * (1 - value(n0) / N[1]) + s.p.b_vmin[1]) - bts[1] + as[i].routesTime[1]) :
      cf * as[i].routesDist[2] + bid_ct[i] * (blens[2] / ((s.p.b_vmax[2] - s.p.b_vmin[2]) * (1 - value(n1) / N[2]) + s.p.b_vmin[2]) - bts[2] + as[i].routesTime[2]) for i in 1:N_MAX]
-    TravelPattern([trunc(Int, round(value(x[i]))) for i in 1:N_MAX], cost, Int(round(value(n0))), Int(round(value(n1))),[])
+     #TODO solve optimal payments & calculate route time
+    TravelPattern([trunc(Int, round(value(x[i]))) for i in 1:N_MAX], cost, cost, Int(round(value(n0))), Int(round(value(n1))),[0.0 for i in 1:N_MAX])
 
 end
 

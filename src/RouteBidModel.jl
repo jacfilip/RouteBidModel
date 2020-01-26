@@ -51,6 +51,7 @@ export solve_travel_jump
 export solve_travel
 export test_solve_travel
 export solve_optimal_payment
+export solve_scenario
 export optimize_bid
 export play_nash
 export cost
