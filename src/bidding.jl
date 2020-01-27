@@ -51,9 +51,7 @@ function calculate_nash(s::Simulation)
             time_agent[n] = times[2] #s
         end
     end
-
-    #TODO resolve optimal payments
-    return TravelPattern(x, cost_agent, cost_agent, travel_counts..., time_agent)
+    return TravelPattern(x, cost_agent, cost_agent, travel_counts..., time_agent, [], [])
 end
 
 function calculate_optimal_jump(s::Simulation,
@@ -85,9 +83,17 @@ function calculate_optimal_jump(s::Simulation,
     #this cost array here contains all costs [in $] from the objective above
     cost = [trunc(Int, round(value(x[i]))) == 0 ? cf * as[i].routesDist[1] + bid_ct[i] * (blens[1] / ((s.p.b_vmax[1] - s.p.b_vmin[1]) * (1 - value(n0) / N[1]) + s.p.b_vmin[1]) - bts[1] + as[i].routesTime[1]) :
      cf * as[i].routesDist[2] + bid_ct[i] * (blens[2] / ((s.p.b_vmax[2] - s.p.b_vmin[2]) * (1 - value(n1) / N[2]) + s.p.b_vmin[2]) - bts[2] + as[i].routesTime[2]) for i in 1:N_MAX]
-     #TODO solve optimal payments & calculate route time
-    TravelPattern([trunc(Int, round(value(x[i]))) for i in 1:N_MAX], cost, cost, Int(round(value(n0))), Int(round(value(n1))),[0.0 for i in 1:N_MAX])
 
+    time = [trunc(Int, round(value(x[i]))) == 0 ? (blens[1] / ((s.p.b_vmax[1] - s.p.b_vmin[1]) * (1 - value(n0) / N[1]) + s.p.b_vmin[1]) - bts[1] + as[i].routesTime[1]) :
+      (blens[2] / ((s.p.b_vmax[2] - s.p.b_vmin[2]) * (1 - value(n1) / N[2]) + s.p.b_vmin[2]) - bts[2] + as[i].routesTime[2]) for i in 1:N_MAX]
+
+    bid_params = BidModelParams(N_MAX = s.p.maxAgents, ct = [s.network.agents[i].valueOfTime for i in 1:N_MAX], cf = s.p.CoF,
+                                      d = [2000., 2000.], N = s.p.bridge_capacity, v_min = s.p.b_vmin, v_max = s.p.b_vmax)
+
+    (bids, log) = play_nash(bid_params, bid_params.ct, 3)
+
+    pplan = solve_optimal_payment(bid_params)
+    TravelPattern([trunc(Int, round(value(x[i]))) for i in 1:N_MAX], cost, cost, Int(round(value(n0))), Int(round(value(n1))),time, bids, pplan.payments)
 end
 
 
@@ -116,6 +122,8 @@ Represents result of an optimization run on a set of model parameters
     n0::Int # number of agents taking the first road
     n1::Int # number of agents taking the second road
     ts = Float64[] # travel times for both roads
+    bids = Float64[]
+    payments = Float64[]
 end
 
 """
@@ -366,7 +374,7 @@ Plays a Nash bidding game assuming that all bids are public.
 In each turn a single agent evaluates her bidding situation and chooses
 a bid that maximizes her profit.
 """
-function play_nash(p::BidModelParams, start_bid = p.ct; N_STEPS=100)
+function play_nash(p::BidModelParams, start_bid = p.ct, N_STEPS=100)
     current_bid = deepcopy(start_bid)
     log = DataFrame(i=Int[], a=Int[], bid = Float64[])
     for i in 1:N_STEPS
