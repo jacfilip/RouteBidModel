@@ -451,15 +451,27 @@ function solve_scenario(nw::Network, agents_num::Int, cot::Vector{Float64}, seed
 
     opt = calculate_optimal_jump(sim)
     nash = calculate_nash(sim)
+    #bid_params = BidModelParams(N_MAX = agents_num, ct = [nw.agents[i].valueOfTime for i in 1:N_MAX], cf = sim.p.CoF,
+    #                                   N = s.p.bridge_capacity, v_min = s.p.b_vmin, v_max = s.p.b_vmax)
+
+    pays = solve_optimal_payment(nash.cost, opt.cost)
 
     df = DataFrame(agent = Int[], cot = Float64[], x_ne = Int[], t_ne = Float64[],
             cost_ne = Float64[], x_opt = Int[], t_opt = Float64[], cost_opt = Float64[], bids = Float64[], pmnts = Float64[], opt_tot_cost = Float64[])
+
+    # println((length(nw.agents)))
+    # println((length(nash.x)))
+    # println((length(nash.ts))
+    # println((length(nash.cost_real)))
+    # println((length(opt.x)))
+    # println((length(opt.ts))
+    # println((length(opt.cost_real)))
 
     for i in 1:agents_num
         push!(df, Dict(:agent => i, :cot => nw.agents[i].valueOfTime,
             :x_ne => nash.x[i], :t_ne => nash.ts[i], :cost_ne => nash.cost_real[i],
             :x_opt => opt.x[i], :t_opt => opt.ts[i], :cost_opt => opt.cost_real[i],
-            :bids => opt.cost_real[i], :pmnts => opt.payments[i], :opt_tot_cost => opt.cost_real[i] + opt.payments[i]))
+            :bids => opt.cost_real[i], :pmnts => pays[i], :opt_tot_cost => opt.cost_real[i] + pays[i]))
     end
     return df
 end

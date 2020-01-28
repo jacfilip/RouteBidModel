@@ -16,6 +16,7 @@ Represents parameters for a two-road transportation system
     N = [20, 20]        #road max capacity
     v_min  = [1 /3.6, 1 / 3.6]  #minimal velocity m/s
     v_max = [60 / 3.6, 50 / 3.6] #maximal velocity m/s
+    r_len = zeros(Float64, (N_MAX,2))
 end
 
 function calculate_nash(s::Simulation)
@@ -87,13 +88,9 @@ function calculate_optimal_jump(s::Simulation,
     time = [trunc(Int, round(value(x[i]))) == 0 ? (blens[1] / ((s.p.b_vmax[1] - s.p.b_vmin[1]) * (1 - value(n0) / N[1]) + s.p.b_vmin[1]) - bts[1] + as[i].routesTime[1]) :
       (blens[2] / ((s.p.b_vmax[2] - s.p.b_vmin[2]) * (1 - value(n1) / N[2]) + s.p.b_vmin[2]) - bts[2] + as[i].routesTime[2]) for i in 1:N_MAX]
 
-    bid_params = BidModelParams(N_MAX = s.p.maxAgents, ct = [s.network.agents[i].valueOfTime for i in 1:N_MAX], cf = s.p.CoF,
-                                      d = [2000., 2000.], N = s.p.bridge_capacity, v_min = s.p.b_vmin, v_max = s.p.b_vmax)
+    #(bids, log) = play_nash(bid_params, bid_params.ct, 3)
 
-    (bids, log) = play_nash(bid_params, bid_params.ct, 3)
-
-    pplan = solve_optimal_payment(bid_params)
-    TravelPattern([trunc(Int, round(value(x[i]))) for i in 1:N_MAX], cost, cost, Int(round(value(n0))), Int(round(value(n1))),time, bids, pplan.payments)
+    TravelPattern([trunc(Int, round(value(x[i]))) for i in 1:N_MAX], cost, cost, Int(round(value(n0))), Int(round(value(n1))),time, [], [])
 end
 
 
@@ -328,6 +325,28 @@ function solve_optimal_payment(p::BidModelParams, bid_ct::Vector{Float64}=p.ct):
     return PaymentPlan(payments=pays, travel_plan=travp, nasheq=nasheq )
 end
 
+function solve_optimal_payment(ne_costs::Vector{Float64}, opt_costs::Vector{Float64})
+    Δc =   ne_costs .- opt_costs
+    #display(DataFrame(Δc=Δc))
+    extra_money = sum(Δc)
+    # this can be not always true due to that in NE there is not control
+    # how agent choose their paths compared to NE
+    # @assert extra_money >= 0
+    extra_money = max(0.0,extra_money)
+    n_pay = sum(Δc .> 0)
+    n_get =  sum(Δc .< 0)
+    pays = deepcopy(Δc)
+    #let's distribute  Δ among the poor
+    redistribute_c = extra_money/n_get
+    for i in 1:length(pays)
+        if Δc[i] < 0
+            pays[i] -= redistribute_c
+        end
+    end
+    #@assert abs(sum(pays)) <= 100*eps(mean(p.ct)*10)
+    return pays
+end
+
 """
 Revaluates bid for a single user who has a certain information about offers
 placed by other market participants.
@@ -355,7 +374,7 @@ function optimizebid(p::BidModelParams, a::Int, bid_ct::AbstractVector{Float64}=
         s1 = solve_optimal_payment(p, mybid_ct)
         roadix = s1.travel_plan.x[a]+1
         #myreal_ne_cost = p.cf * s1.nasheq.tdist + p.ct[a] * s1.nasheq.ttime
-        my_real_cost = p.cf * p.d[roadix] + p.ct[a] * s1.travel_plan.ts[roadix] + s1.payments[a]
+        my_real_cost = p.cf * p.r_len[a, roadix] + p.ct[a] * s1.travel_plan.ts[roadix] + s1.payments[a]
         if my_real_cost < best_cost
             best_cost = my_real_cost
             best_bid = mybid_ct[a]
