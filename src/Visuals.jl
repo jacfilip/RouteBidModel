@@ -1,6 +1,6 @@
 function getLL_of_route(mData::MapData,route::AbstractArray{Int})
     myroute = []
-    jitter = 1e-4
+    jitter = 4e-5
     for nodeID in route
         lla = LLA(mData.nodes[nodeID],mData.bounds)
         push!(myroute,(lla.lat + jitter * randn(),lla.lon + jitter * randn()))
@@ -89,7 +89,7 @@ function OVAGraph(map::OpenStreetMapX.OSMData, mData::MapData, a::Agent)
     println("File Saved!")
 end
 
-function plot_agents(s::Simulation; agentIds=1:min(1000,s.network.agentIDmax))
+function plot_agents(s::Simulation, title::String; agentIds=1:min(1000,s.network.agentIDmax))
     mData = s.network.mapData
     flm = pyimport("folium")
     matplotlib_cm = pyimport("matplotlib.cm")
@@ -117,7 +117,7 @@ function plot_agents(s::Simulation; agentIds=1:min(1000,s.network.agentIDmax))
     MAP_BOUNDS = [(mData.bounds.min_y,mData.bounds.min_x),(mData.bounds.max_y,mData.bounds.max_x)]
     flm.Rectangle(MAP_BOUNDS, color="black",weight=6).add_to(m)
     m.fit_bounds(MAP_BOUNDS)
-    m.save("AgentsGraph.html")
+    m.save(title * ".html")
     println("File Saved!")
 end
 

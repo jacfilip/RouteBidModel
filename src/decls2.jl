@@ -438,7 +438,7 @@ function load_sim(path::AbstractString, filename::AbstractString)::Simulation
     return sim
 end
 
-function solve_scenario(nw::Network, agents_num::Int, cot::Vector{Float64}, seed::Int = 0)
+function solve_scenario(name::String, nw::Network, agents_num::Int, cot::Vector{Float64}, seed::Int = 0)
     Random.seed!(seed)
     p = ModelParams()
     p.initialAgents = p.maxAgents = agents_num
@@ -473,9 +473,16 @@ function solve_scenario(nw::Network, agents_num::Int, cot::Vector{Float64}, seed
             :x_opt => opt.x[i], :t_opt => opt.ts[i], :cost_opt => opt.cost_real[i],
             :bids => opt.cost_real[i], :pmnts => pays[i], :opt_tot_cost => opt.cost_real[i] + pays[i]))
     end
+
+    path = joinpath("src","maps")
+    file = "manhattan_filtered.osm"
+    osmmap = OpenStreetMapX.parseOSM(joinpath(path,file))
+    crop!(osmmap)
+    plot_agents(sim, name)
+
     return df
 end
 
-function solve_scenario(nw::Network, agents_num::Int, cot_dev_dph::Float64 = 3.0, cot_mean_dph::Float64 = 24.0, seed::Int = 0)
-    return solve_scenario(nw, agents_num, (cot_mean_dph .+ randn(agents_num) .* cot_dev_dph) ./ 3600.0, seed)
+function solve_scenario(name::String, nw::Network, agents_num::Int, cot_dev_dph::Float64 = 3.0, cot_mean_dph::Float64 = 24.0, seed::Int = 0)
+    return solve_scenario(name, nw, agents_num, (cot_mean_dph .+ randn(agents_num) .* cot_dev_dph) ./ 3600.0, seed)
 end

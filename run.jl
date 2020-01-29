@@ -13,12 +13,24 @@ path = joinpath("src","maps")
 file = "manhattan_filtered.osm"
 
 nw = create_network_from_file(path, file)
+#set_spawn_dest!(nw,  [553], [847])
 
-set_spawn_dest!(nw,  [553], [847])
+set_spawn_dest!(nw, vcat(get_nodes_in_radius(nw, (nw.intersections[718].posX, nw.intersections[718].posY), 100.0),
+                                get_nodes_in_radius(nw, (nw.intersections[636].posX, nw.intersections[636].posY), 50.0),
+                                get_nodes_in_radius(nw, (nw.intersections[54].posX, nw.intersections[54].posY), 100.0)),
+                        vcat(get_nodes_in_radius(nw, (nw.intersections[958].posX, nw.intersections[958].posY), 100.0),
+                                get_nodes_in_radius(nw, (nw.intersections[601].posX, nw.intersections[601].posY), 70.0),
+                                get_nodes_in_radius(nw, (nw.intersections[663].posX, nw.intersections[663].posY), 50.0)))
 
-CSV.write(raw".\results\scenario-1.csv", solve_scenario(nw, 700))
-CSV.write(raw".\results\scenario-2.csv", solve_scenario(nw, 700, seed = 865345634))
-CSV.write(raw".\results\scenario-3.csv", solve_scenario(nw, 700, 10.0, 30.0, 53455643))
+CSV.write(raw".\results\scenario-1.csv", solve_scenario("scenario1", nw, 700))
+CSV.write(raw".\results\scenario-2.csv", solve_scenario("scenario2",nw, 1000, 5.0, 24.0, 86534))
+CSV.write(raw".\results\scenario-3.csv", solve_scenario("scenario3",nw, 700, 10.0, 30.0, 53455643))
+CSV.write(raw".\results\scenario-4.csv", solve_scenario("scenario4",nw, 1000))
+
+osmmap = OpenStreetMapX.parseOSM(joinpath(path,file))
+crop!(osmmap)
+mData = get_map_data(path, file, only_intersections = true)
+plot_agents(osmmap, mData, sim.agentsFinished)
 
 # Random.seed!(0);
 # const p = ModelParams()
@@ -36,9 +48,7 @@ CSV.write(raw".\results\scenario-3.csv", solve_scenario(nw, 700, 10.0, 30.0, 534
 # runsim!(sim)
 #savesim(sim, "sim_na_2k_t=90m")
 
-#osmmap = OpenStreetMapX.parseOSM(joinpath(path,file))
-#crop!(osmmap)
-#mData = get_map_data(path, file, only_intersections = true)
+
 plot_agents(sim,agentIds=1:10)
 
 east_r = get_road_by_nodes(nw, 445, 446)

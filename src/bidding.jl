@@ -78,9 +78,9 @@ function calculate_optimal_jump(s::Simulation,
            + x[i]  *  (cf * as[i].routesDist[2] + bid_ct[i] * (blens[2] / ((s.p.b_vmax[2] - s.p.b_vmin[2]) * (1 - n1 / N[2]) + s.p.b_vmin[2]) - bts[2] + as[i].routesTime[2])  ) )  for i in 1:N_MAX))
     optimize!(m)
     termination_status(m)
-    println("Cost: $(objective_value(m))")
-    println("n0=$(value(n0))")
-    println([round(value(x[i])) for i in 1:N_MAX])
+    #println("Cost: $(objective_value(m))")
+    #println("n0=$(value(n0))")
+    #println([round(value(x[i])) for i in 1:N_MAX])
     #this cost array here contains all costs [in $] from the objective above
     cost = [trunc(Int, round(value(x[i]))) == 0 ? cf * as[i].routesDist[1] + bid_ct[i] * (blens[1] / ((s.p.b_vmax[1] - s.p.b_vmin[1]) * (1 - value(n0) / N[1]) + s.p.b_vmin[1]) - bts[1] + as[i].routesTime[1]) :
      cf * as[i].routesDist[2] + bid_ct[i] * (blens[2] / ((s.p.b_vmax[2] - s.p.b_vmin[2]) * (1 - value(n1) / N[2]) + s.p.b_vmin[2]) - bts[2] + as[i].routesTime[2]) for i in 1:N_MAX]
