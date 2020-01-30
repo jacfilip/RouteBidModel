@@ -24,8 +24,14 @@ set_spawn_dest!(nw, vcat(get_nodes_in_radius(nw, (nw.intersections[718].posX, nw
 
 CSV.write(raw".\results\scenario-1.csv", solve_scenario("scenario1", nw, 700))
 CSV.write(raw".\results\scenario-2.csv", solve_scenario("scenario2",nw, 1000, 5.0, 24.0, 86534))
-CSV.write(raw".\results\scenario-3.csv", solve_scenario("scenario3",nw, 700, 10.0, 30.0, 53455643))
-CSV.write(raw".\results\scenario-4.csv", solve_scenario("scenario4",nw, 1000))
+
+vot = 24 .+ randn(700) .* 3
+vot[1:3] = [80, 90, 100]
+vot[4:6] = [1, 5, 10]
+
+vot = vot ./ 3600
+
+CSV.write(raw".\results\scenario-4.csv", solve_scenario("scenario4",nw, 700, vot, 6456449))
 
 osmmap = OpenStreetMapX.parseOSM(joinpath(path,file))
 crop!(osmmap)

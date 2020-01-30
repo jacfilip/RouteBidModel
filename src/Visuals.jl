@@ -117,8 +117,9 @@ function plot_agents(s::Simulation, title::String; agentIds=1:min(1000,s.network
     MAP_BOUNDS = [(mData.bounds.min_y,mData.bounds.min_x),(mData.bounds.max_y,mData.bounds.max_x)]
     flm.Rectangle(MAP_BOUNDS, color="black",weight=6).add_to(m)
     m.fit_bounds(MAP_BOUNDS)
-    m.save(title * ".html")
-    println("File Saved!")
+    dest = joinpath("results", title * ".html")
+    m.save(dest)
+    println("File saved at: " * dest)
 end
 
 

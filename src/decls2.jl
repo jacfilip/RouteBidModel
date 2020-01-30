@@ -459,14 +459,6 @@ function solve_scenario(name::String, nw::Network, agents_num::Int, cot::Vector{
     df = DataFrame(agent = Int[], cot = Float64[], x_ne = Int[], t_ne = Float64[],
             cost_ne = Float64[], x_opt = Int[], t_opt = Float64[], cost_opt = Float64[], bids = Float64[], pmnts = Float64[], opt_tot_cost = Float64[])
 
-    # println((length(nw.agents)))
-    # println((length(nash.x)))
-    # println((length(nash.ts))
-    # println((length(nash.cost_real)))
-    # println((length(opt.x)))
-    # println((length(opt.ts))
-    # println((length(opt.cost_real)))
-
     for i in 1:agents_num
         push!(df, Dict(:agent => i, :cot => nw.agents[i].valueOfTime,
             :x_ne => nash.x[i], :t_ne => nash.ts[i], :cost_ne => nash.cost_real[i],
