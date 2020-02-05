@@ -220,7 +220,7 @@ function solve_travel_jump(p::BidModelParams, bid_ct=p.ct)::TravelPattern
   @variable(m, 0 <= n1 <= p.N[2], Int)
   @constraint(m, sum(x) == n1)
   @constraint(m, n0 + n1 == p.N_MAX)
-  @NLobjective(m, Min, sum(
+  @NLobjective(m, Min, sum4(
     (p.cf * p.d[1] + bid_ct[i] * p.d[1] / ((p.v_max[1] - p.v_min[1]) * (1 - n0 / p.N[1]) + p.v_min[1])) * (1 - x[i])
   + (p.cf * p.d[2] + bid_ct[i] * p.d[2] / ((p.v_max[2] - p.v_min[2]) * (1 - n1 / p.N[2]) + p.v_min[2])) * x[i]
   for i in 1:p.N_MAX))

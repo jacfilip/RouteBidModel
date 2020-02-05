@@ -476,5 +476,5 @@ function solve_scenario(name::String, nw::Network, agents_num::Int, cot::Vector{
 end
 
 function solve_scenario(name::String, nw::Network, agents_num::Int, cot_dev_dph::Float64 = 3.0, cot_mean_dph::Float64 = 24.0, seed::Int = 0)
-    return solve_scenario(name, nw, agents_num, (cot_mean_dph .+ randn(agents_num) .* cot_dev_dph) ./ 3600.0, seed)
+    return solve_scenario(name, nw, agents_num, max.((cot_mean_dph .+ randn(agents_num) .* cot_dev_dph), zeros(agents_num)) ./ 3600.0, seed)
 end
