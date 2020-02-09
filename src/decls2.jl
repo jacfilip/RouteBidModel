@@ -1,8 +1,8 @@
 
 @with_kw mutable struct ModelParams
-    CoF =  0.15e-3;
-    initialAgents=700
-    maxAgents=700
+    CoF =  0.15e-3; #$/m
+    initialAgents=1000
+    maxAgents=1000
     timeMax=Inf
     maxIter=10
 
@@ -18,11 +18,11 @@
     bridgenodes = [east_bridge_lane[1], west_bridge_lane[1]]
     bridge_capacity = [Int(initialAgents*3/4), Int(initialAgents*3/4)]
                         #east, west max number of vehicles
-    b_vmin = [10,10]
-    b_vmax = [90,90]
+    b_vmin = [1,1] ./ 3.6     #m/s
+    b_vmax = [100,100] ./ 3.6 #m/s
 end
 
-@with_kw struct Road
+@with_kw mutable struct Road
     rlen::Float64 #m
     agents=Set{Int}()
     bNode::Int
@@ -448,6 +448,9 @@ function solve_scenario(name::String, nw::Network, agents_num::Int, cot::Vector{
     end
     spawn_num_agents!(sim, p.initialAgents)
     [nw.agents[i].valueOfTime = cot[i] for i in 1:agents_num]
+
+    get_road_by_nodes(nw, sim.p.east_bridge_lane...).rlen = 2000.0
+    get_road_by_nodes(nw, sim.p.west_bridge_lane...).rlen = 3000.0
 
     opt = calculate_optimal_jump(sim)
     nash = calculate_nash(sim)

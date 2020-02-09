@@ -15,7 +15,7 @@ Represents parameters for a two-road transportation system
     d = [2786.0, 3238.0]  #road length m
     N = [20, 20]        #road max capacity
     v_min  = [1 /3.6, 1 / 3.6]  #minimal velocity m/s
-    v_max = [60 / 3.6, 50 / 3.6] #maximal velocity m/s
+    v_max = [60 / 3.6, 60 / 3.6] #maximal velocity m/s
     r_len = zeros(Float64, (N_MAX,2))
 end
 
@@ -34,6 +34,7 @@ function calculate_nash(s::Simulation)
     cost_agent = Vector{Float64}(undef, N_MAX) #$/s
     time_agent = Vector{Float64}(undef, N_MAX) #s
 
+    #assign agents to their best choice routes
     for n in 1:N_MAX
         a = s.network.agents[n]
         times = travel_times(s, a) #s
@@ -52,6 +53,14 @@ function calculate_nash(s::Simulation)
             time_agent[n] = times[2] #s
         end
     end
+
+    #calculate final costs
+    for i in 1:N_MAX
+        a = s.network.agents[i]
+        time_agent[i] = travel_times(s, a)[x[i] + 1]
+        cost_agent[i] =  a.valueOfTime * time_agent[i] + s.p.CoF * a.routesDist[x[i] + 1]
+    end
+
     return TravelPattern(x, cost_agent, cost_agent, travel_counts..., time_agent, [], [])
 end
 
@@ -60,8 +69,8 @@ function calculate_optimal_jump(s::Simulation,
     N_MAX = s.network.agentIDmax
     N = s.p.bridge_capacity
     cf = s.p.CoF #$/m
-
     blens = [get_road_by_nodes(s.network, s.p.east_bridge_lane...).rlen, get_road_by_nodes(s.network, s.p.west_bridge_lane...).rlen] #m
+
     bts = blens./s.p.b_vmax # times of travel through bridges with max speed
     params = Dict{Symbol,Any}()
     params[:nl_solver] = with_optimizer(Ipopt.Optimizer, print_level=0)
