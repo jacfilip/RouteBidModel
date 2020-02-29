@@ -3,7 +3,8 @@ function getLL_of_route(mData::MapData,route::AbstractArray{Int})
     jitter = 4e-5
     for nodeID in route
         lla = LLA(mData.nodes[nodeID],mData.bounds)
-        push!(myroute,(lla.lat + jitter * randn(),lla.lon + jitter * randn()))
+        #push!(myroute,(lla.lat + jitter * randn(),lla.lon + jitter * randn()))
+        push!(myroute,(lla.lat,lla.lon))
     end
     return myroute
 end
@@ -36,7 +37,7 @@ function OVAGraph(map::OpenStreetMapX.OSMData, mData::MapData, a::Agent)
     matplotlib_cm = pyimport("matplotlib.cm")
     matplotlib_colors = pyimport("matplotlib.colors")
     cmap = matplotlib_cm.get_cmap("prism")
-    m = flm.Map()
+    m = flm.Map(tiles="Stamen Toner")
 
     o_LL = GetLLOfRoute(map,mData,a.origRoute[1:end])
     t_LL = GetLLOfRoute(map,mData,a.travelledRoute[1:end])
@@ -90,32 +91,47 @@ function OVAGraph(map::OpenStreetMapX.OSMData, mData::MapData, a::Agent)
 end
 
 function plot_agents(s::Simulation, title::String; agentIds=1:min(1000,s.network.agentIDmax))
+    println("plot_agents")
     mData = s.network.mapData
     flm = pyimport("folium")
     matplotlib_cm = pyimport("matplotlib.cm")
     matplotlib_colors = pyimport("matplotlib.colors")
     cmap = matplotlib_cm.get_cmap("prism")
-    m = flm.Map()
+    m = flm.Map(tiles="Stamen Toner")
 
+    segment_cs = Dict{Tuple{Int,Int},Int}()
     for n in agentIds
         a = s.network.agents[n]
         myroute = a.routes[a.travelledRoute]
-        LL = getLL_of_route(s.network.mapData, myroute)
-        info = "Agent # $(a.id)\n<BR>"*
-                "Length: $(length(myroute)) nodes\n<br>" *
-                "From: Node $(myroute[1])\n<br>" *
-                "To: Node $(myroute[end])\n<br>" *
-                "Time Elapsed $(a.routesTime[a.travelledRoute])"
+        segments =  [(myroute[i],myroute[i+1]) for i in 1:length(myroute)-1]
+        for segment in segments
+            nn = get!(segment_cs,segment,0)
+            segment_cs[segment] = nn+1
+        end
+    end
+    max_count = maximum(values(segment_cs))
+    min_count = minimum(values(segment_cs))
+    cc = max_count - min_count + 1
+    cols = reshape( range(colorant"blue", stop=colorant"red",length=cc), 1, cc);
+
+    for segment in keys(segment_cs)
+        a_count = segment_cs[segment]
+        colix = a_count + 1 - min_count
+        LL = getLL_of_route(s.network.mapData, [segment...])
+        info =  "From: Node $(segment[1])\n<br>" *
+                "To: Node $(segment[2])\n<br>" *
+                "Load: $(a_count)"
         flm.PolyLine(
                 LL,
                 popup=info,
                 tooltip=info,
-                color=matplotlib_colors.to_hex(cmap(n/min(maximum(agentIds),10)))
+                weight=round(Int,log(7*colix))+1,
+                color="#$(hex(cols[colix]))"
             ).add_to(m)
     end
 
     MAP_BOUNDS = [(mData.bounds.min_y,mData.bounds.min_x),(mData.bounds.max_y,mData.bounds.max_x)]
-    flm.Rectangle(MAP_BOUNDS, color="black",weight=6).add_to(m)
+    flm.Rectangle(MAP_BOUNDS, color="green",weight=6).add_to(m)
     m.fit_bounds(MAP_BOUNDS)
     dest = joinpath("results", title * ".html")
     m.save(dest)
@@ -128,7 +144,7 @@ function plot_nodes_locations(map::OpenStreetMapX.OSMData, mData::MapData)
     matplotlib_cm = pyimport("matplotlib.cm")
     matplotlib_colors = pyimport("matplotlib.colors")
     cmap = matplotlib_cm.get_cmap("prism")
-    m = flm.Map()
+    m = flm.Map(tiles="Stamen Toner")
 
     for n in keys(mData.n)
         if !haskey(map.nodes, mData.n[n])
@@ -164,7 +180,7 @@ function plot_all_paths(map::OpenStreetMapX.OSMData, mData::MapData)
     matplotlib_cm = pyimport("matplotlib.cm")
     matplotlib_colors = pyimport("matplotlib.colors")
     cmap = matplotlib_cm.get_cmap("prism")
-    m = flm.Map()
+    m = flm.Map(tiles="Stamen Toner")
 
     for e in mData.e
         if !haskey(map.nodes, e[1]) || !haskey(map.nodes, e[2])
