@@ -5,15 +5,23 @@ using RouteBidModel
 using DataFrames
 using Random
 using Distributions
+using CSV
 Random.seed!(0);
 
-N_MAX = 30
-p = BidModelParams(N_MAX=N_MAX,N=[20,20],ct=rand(LogNormal(3.2,0.20),N_MAX)./3600 )
+N_MAX = 8
+p = BidModelParams(N_MAX=N_MAX,N=[20,10],ct=[1.0, 60.0, 80.0, 3.0, 100.0, 150.0, 5.0, 200.0] ./ 3600 )
+
+p2 = BidModelParams(N_MAX=200, N=[150,100], ct=(rand(200).-0.5) .* 10 .+ 24)
+bid, log = play_nash(p2, p2.ct, 600)
+
+CSV.write(raw".\results\bids.csv", log)
+
+ne = solve_nash(p)
 
 ne = solve_nash_time(p)
 e_cost = sum(cost(p, ne))
 
-t = solve_travel_jump(p)
+opt = solve_travel_jump(p)
 sum(t.cost)
 
 opt = solve_travel(p)

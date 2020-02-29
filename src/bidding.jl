@@ -6,16 +6,16 @@ Represents parameters for a two-road transportation system
 
 
 @with_kw struct BidModelParams
-    N_MAX = 30   #number of agents
+    N_MAX = 8   #number of agents
     ct =  vcat(
        [10 + (rand() - 0.5) * 10 for i in 1:3],
        [10 + (rand() - 0.5) * 10 for i in 4:N_MAX]) ./ 3600 #cost of time $/s
     #real cost of time USDs/s for each agent
     cf = 2.1 / 1000 # cost of fuel USD/m
-    d = [2786.0, 3238.0]  #road length m
-    N = [20, 20]        #road max capacity
+    d = [1000.0, 1000.0]  #road length m
+    N = [14, 7]        #road max capacity
     v_min  = [1 /3.6, 1 / 3.6]  #minimal velocity m/s
-    v_max = [60 / 3.6, 60 / 3.6] #maximal velocity m/s
+    v_max = [50 / 3.6, 50 / 3.6] #maximal velocity m/s
     r_len = zeros(Float64, (N_MAX,2))
 end
 
@@ -212,6 +212,37 @@ function solve_nash_time(p::BidModelParams)::NashEq
     NashEq(n0=n0,n1=n1,ts=best_ts,ttime=ttime,tdist=tdist)
 end
 
+function solve_nash(p::BidModelParams)::TravelPattern
+    n1 = 0
+    n2 = 0
+    x = Vector{Int}()
+    t = Vector{Float64}()
+    for i in 1:p.N_MAX
+        if n1 == p.N[1]
+            @assert n2 < p.N[2]
+            n2 += 1
+            push!(x, 1)
+        else
+            ts = t_travel(p,[n1, n2])
+            if ts[1] < ts[2]
+                n1 = n1 +1
+                push!(x, 0)
+                push!(t, ts[1])
+            else
+                n2 = n2 +1
+                push!(x, 1)
+                push!(t, ts[2])
+            end
+        end
+    end
+
+    for i in 1:p.N_MAX
+        t[i] = t_travel(p, [n1,n2])[x[i]+1]
+    end
+
+    return TravelPattern(x=x, cost=cost(p, x, t),cost_real=[],n0=n1,n1=n2,ts=t,bids=[],payments=[])
+end
+
 """
     solve_travel_jump(p::BidModelParams, bid_ct=p.ct)::TravelPattern
 
@@ -402,14 +433,17 @@ Plays a Nash bidding game assuming that all bids are public.
 In each turn a single agent evaluates her bidding situation and chooses
 a bid that maximizes her profit.
 """
-function play_nash(p::BidModelParams, start_bid = p.ct, N_STEPS=100)
+function play_nash(p::BidModelParams, start_bid = p.ct, N_STEPS=200)
     current_bid = deepcopy(start_bid)
     log = DataFrame(i=Int[], a=Int[], bid = Float64[])
     for i in 1:N_STEPS
-        a = rand(1:p.N_MAX)
+        a = ((i - 1) % (length(p.ct))) + 1 #rand(1:p.N_MAX)
         res = optimizebid(p,a,current_bid)
         current_bid[a] = res.bid
-        push!(log, [i, a, res.bid])
+
+        for ia in 1:p.N_MAX
+            push!(log, [i, ia, current_bid[ia]])
+        end
     end
     (bid=current_bid, log=log)
 end

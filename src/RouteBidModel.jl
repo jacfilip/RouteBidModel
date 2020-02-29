@@ -47,6 +47,7 @@ export spawn_num_agents!
 export getLL_of_route
 
 export solve_nash_time
+export solve_nash
 export solve_travel_jump
 export solve_travel
 export test_solve_travel

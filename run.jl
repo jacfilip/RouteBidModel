@@ -25,6 +25,9 @@ set_spawn_dest!(nw, vcat(get_nodes_in_radius(nw, (nw.intersections[718].posX, nw
 
 s1 = solve_scenario("scenario1", nw, 1000, 3.0, 24.0, 9623423)
 s2 = solve_scenario("scenario2",nw, 1000, 10.0, 24.0, 554618)
+s2_2 = solve_scenario("scenario2_2",nw, 1000, 10.0, 24.0, 85318)
+s2_3 = solve_scenario("scenario2_3",nw, 1000, 10.0, 24.0, 834726)
+s2_4 = solve_scenario("scenario2",nw, 1000, 10.0, 24.0, 554618)
 
 (sum(s1[:cost_ne]) - sum(s1[:opt_tot_cost]))
 (sum(s1[:cost_ne]) - sum(s1[:cost_opt]))
@@ -33,7 +36,19 @@ sum(s1[:pmnts] .> 0)
 
 
 CSV.write(raw".\results\scenario-1.csv", solve_scenario("scenario1", nw, 1000, 3.0, 24.0, 9623423))
+
 CSV.write(raw".\results\scenario-2.csv", solve_scenario("scenario2",nw, 1000, 10.0, 24.0, 554618))
+CSV.write(raw".\results\scenario-22.csv", solve_scenario("scenario2_2",nw, 1000, 10.0, 24.0, 85318))
+CSV.write(raw".\results\scenario-23.csv", solve_scenario("scenario2_3",nw, 1000, 10.0, 24.0, 834726))
+CSV.write(raw".\results\scenario-24.csv", solve_scenario("scenario2_4",nw, 1000, 10.0, 24.0, 554618))
+CSV.write(raw".\results\scenario-25.csv", solve_scenario("scenario2_5",nw, 1000, 10.0, 24.0, 324875))
+CSV.write(raw".\results\scenario-26.csv", solve_scenario("scenario2_6",nw, 1000, 10.0, 24.0, 623457))
+CSV.write(raw".\results\scenario-27.csv", solve_scenario("scenario2_7",nw, 1000, 10.0, 24.0, 19054))
+CSV.write(raw".\results\scenario-28.csv", solve_scenario("scenario2_8",nw, 1000, 10.0, 24.0, 24563))
+CSV.write(raw".\results\scenario-29.csv", solve_scenario("scenario2_9",nw, 1000, 10.0, 24.0, 5342300))
+CSV.write(raw".\results\scenario-210.csv", solve_scenario("scenario2_10",nw, 1000, 10.0, 24.0, 73242))
+
+
 CSV.write(raw".\results\scenario-3.csv", solve_scenario("scenario3",nw, 1000, 3.0, 35.0, 827326))
 CSV.write(raw".\results\scenario-8.csv", solve_scenario("scenario8",nw, 1000, 0.0, 24.0, 18226))
 
