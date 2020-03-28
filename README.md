@@ -1,7 +1,7 @@
 # RouteBidModel.jl
 Repository accompanying the paper:
 
-*On urban traffic cost optimization optimization with an online bidding platform for vehicle commuters*
+*On urban traffic cost optimization optimization with an online mutual payments bidding platform for vehicle commuters*
 
 by Jacek Filipowski, Bogumił Kamiński, Atefeh Mashatan, Paweł Prałat, Przemysław Szufel.
 
