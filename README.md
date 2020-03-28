@@ -5,7 +5,7 @@ Repository accompanying the paper:
 
 We consider the problem of increasing efficiency of a transportation system through optimizing the behavior of vehicle users. We assume that for commuters time in the traffic can be represented by monetary value and hence introduction of monetary compensations can lead to a more efficient organization of the transportation system. In our model heterogeneous travelers differently assess value of time spent in congestion, hence it is presumably viable to reduce traffic in the most congested streets by introducing a bidding mechanism that will allow the participants having a lower monetary value of time to receive a compensation financed by the group of commuters having a high value of time spend in congestion. 
 
-Our goal is to design a novel system which would allow to achieve better (in terms of Pareto) travel patterns of commuters traveling through congested city areas. In this system particiapants would reveal their preferences regarding their value of time an on this basis they would be assigned to distinct routes leading to their destination.
+Our goal is to design a novel system which would allow to achieve better (in terms of Pareto) travel patterns for commuters traveling through congested city areas. In this system particiapants would reveal their preferences regarding their value of time and on this basis they would be assigned to distinct routes leading to their destination point, such as the overall popolation's utility would be improved.
 
 | **Documentation** | **Build Status** |
 |---------------|--------------|
