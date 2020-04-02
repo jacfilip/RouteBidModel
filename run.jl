@@ -6,6 +6,7 @@ using Random
 using OpenStreetMapX
 using DelimitedFiles, CSV
 using DataFrames
+using Distributions
 
 Random.seed!(0);
 
@@ -25,9 +26,12 @@ set_spawn_dest!(nw, vcat(get_nodes_in_radius(nw, (nw.intersections[718].posX, nw
 
 s1 = solve_scenario("scenario1", nw, 1000, 3.0, 24.0, 9623423)
 s2 = solve_scenario("scenario2",nw, 1000, 10.0, 24.0, 554618)
+
 s2_2 = solve_scenario("scenario2_2",nw, 1000, 10.0, 24.0, 85318)
 s2_3 = solve_scenario("scenario2_3",nw, 1000, 10.0, 24.0, 834726)
 s2_4 = solve_scenario("scenario2",nw, 1000, 10.0, 24.0, 554618)
+
+CSV.write(raw".\results\scenario-3.csv", solve_scenario("scenario3",nw, 1000, 3.0, 35.0, 827326))
 
 (sum(s1[:cost_ne]) - sum(s1[:opt_tot_cost]))
 (sum(s1[:cost_ne]) - sum(s1[:cost_opt]))
@@ -48,8 +52,20 @@ CSV.write(raw".\results\scenario-28.csv", solve_scenario("scenario2_8",nw, 1000,
 CSV.write(raw".\results\scenario-29.csv", solve_scenario("scenario2_9",nw, 1000, 10.0, 24.0, 5342300))
 CSV.write(raw".\results\scenario-210.csv", solve_scenario("scenario2_10",nw, 1000, 10.0, 24.0, 73242))
 
+#scenarios with triangular distributions
 
-CSV.write(raw".\results\scenario-3.csv", solve_scenario("scenario3",nw, 1000, 3.0, 35.0, 827326))
+CSV.write(raw".\results\scenario-Tr-1.csv", solve_scenario("scenario_Tr_1", nw, 1000, 16.7, 24.0, 31.3, 9623423))
+CSV.write(raw".\results\scenario-Tr-2.csv", solve_scenario("scenario_Tr_2", nw, 1000, 0.0, 5.7, 66.3, 554618))
+CSV.write(raw".\results\scenario-Tr-3.csv", solve_scenario("scenario_Tr_3", nw, 1000, 27.7, 35.0, 42.3, 827326))
+
+#multiple runs of 2nd scenario
+CSV.write(raw".\results\scenario-Tr-2_mult0.csv", solve_scenario("scenario_Tr_2_1", nw, 1000, 0.0, 5.7, 66.3, 554618))
+for i in 2:10
+        CSV.write(raw".\results\scenario-Tr-2_mult.csv", solve_scenario("scenario_Tr_2_$i", nw, 1000, 0.0, 5.7, 66.3,  Int(floor(rand()*1e7))), append = true)
+end
+
+#end
+
 CSV.write(raw".\results\scenario-8.csv", solve_scenario("scenario8",nw, 1000, 0.0, 24.0, 18226))
 
 vot = 24 .+ randn(700) .* 3

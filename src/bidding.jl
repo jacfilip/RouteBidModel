@@ -181,7 +181,14 @@ end
 The total cost of travel
 """
 @inline function cost(p::BidModelParams, x::Vector{Int}, ts::Vector{Float64}, bid_ct::AbstractVector{Float64}=p.ct)
-    p.cf .* p.d[x .+ 1] .+ bid_ct .* ts[x .+ 1]
+    println("cf: $(p.cf)")
+    println("p.d: $(p.d)")
+    println("x: $(x)")
+    println("ct: $(bid_ct.*3600)")
+    println("ts: $(ts)")
+    c = p.cf .* p.d[x .+ 1] .+ bid_ct .* ts[x .+ 1]
+    println("cost: $(c)")
+    c
 end
 
 """
@@ -236,13 +243,28 @@ function solve_nash(p::BidModelParams)::TravelPattern
         end
     end
 
-    for i in 1:p.N_MAX
-        t[i] = t_travel(p, [n1,n2])[x[i]+1]
-    end
-
+    #for i in 1:p.N_MAX
+    #    t[i] = t_travel(p, [n1,n2])[x[i]+1]
+    #end
+    t = t_travel(p, [n1,n2])
     return TravelPattern(x=x, cost=cost(p, x, t),cost_real=[],n0=n1,n1=n2,ts=t,bids=[],payments=[])
 end
 
+#TODO: can be removed after calculations:
+function calc_nash(p::BidModelParams)::TravelPattern
+    n0 = Int(p.N_MAX / 2 + 1)
+    n1 = Int(p.N_MAX / 2 - 1)
+
+    x = vcat(Int.(ones(n1)), Int.(zeros(n0)))
+    t = Vector{Float64}()
+
+    #for i in 1:p.N_MAX
+    #    push!(t, t_travel(p, [n0,n1])[x[i]+1])
+    #end
+    t = t_travel(p, [n0,n1])
+
+    return TravelPattern(x=x, cost=cost(p, x, t, p.ct),cost_real=[],n0=n0,n1=n1,ts=t,bids=[],payments=[])
+end
 """
     solve_travel_jump(p::BidModelParams, bid_ct=p.ct)::TravelPattern
 
@@ -435,14 +457,13 @@ a bid that maximizes her profit.
 """
 function play_nash(p::BidModelParams, start_bid = p.ct, N_STEPS=200)
     current_bid = deepcopy(start_bid)
-    log = DataFrame(i=Int[], a=Int[], bid = Float64[])
+    log = DataFrame(i=Int[], a=Int[], bid = Float64[], pmnt = Float64[])
     for i in 1:N_STEPS
         a = ((i - 1) % (length(p.ct))) + 1 #rand(1:p.N_MAX)
         res = optimizebid(p,a,current_bid)
         current_bid[a] = res.bid
-
         for ia in 1:p.N_MAX
-            push!(log, [i, ia, current_bid[ia]])
+            push!(log, [i, ia, current_bid[ia], res.payment.payments[ia]])
         end
     end
     (bid=current_bid, log=log)

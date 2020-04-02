@@ -6,22 +6,69 @@ using DataFrames
 using Random
 using Distributions
 using CSV
+using Combinatorics
+using DelimitedFiles
+
 Random.seed!(0);
 
 N_MAX = 8
 p = BidModelParams(N_MAX=N_MAX,N=[20,10],ct=[1.0, 60.0, 80.0, 3.0, 100.0, 150.0, 5.0, 200.0] ./ 3600 )
 
-p2 = BidModelParams(N_MAX=200, N=[150,100], ct=(rand(200).-0.5) .* 10 .+ 24)
+#symulation of bidding behavior
+p2 = BidModelParams(N_MAX=200, N=[150,100], ct=rand(TriangularDist(0.0, 66.3, 5.7), 200))
 bid, log = play_nash(p2, p2.ct, 600)
 
 CSV.write(raw".\results\bids.csv", log)
 
+#end of simulation of bidding behavior
 ne = solve_nash(p)
 
 ne = solve_nash_time(p)
+
 e_cost = sum(cost(p, ne))
 
 opt = solve_travel_jump(p)
+
+perms = collect(permutations([1.0, 3.0, 5.0, 60.0, 80.0, 100.0, 150.0, 200.0] ./ 3600))
+
+costs = Vector{Float64}()
+for i in [1, 40320]#length(perms)
+    p = BidModelParams(N_MAX=N_MAX,N=[20,10],ct=perms[i])
+    ne = calc_nash(p)
+    #opt = solve_travel_jump(p)
+    push!(costs, sum(ne.cost))
+end
+
+p2 = BidModelParams(N_MAX=N_MAX,N=[20,10],ct=[1.0, 3.0, 5.0, 60.0, 80.0, 100.0, 150.0, 200.0] ./ 3600 )
+res = calc_nash(p2)
+res2 = solve_travel_jump(p2)
+
+sum(res.cost) - sum(res2.cost)
+c1 = cost(p2, [1,1,1,0,0,0,0,0], t_travel(p2, [3,5]), perms[1])
+c2 = cost(p2, [1,1,1,0,0,0,0,0], t_travel(p2, [3,5]), perms[end])
+costs_diff = costs .- sum(opt.cost)
+(minimum(costs_diff), mean(costs_diff), maximum(costs_diff))
+
+opt = solve_travel_jump(p2)
+
+ts = t_travel(p2, [5,3])
+xs = [1,1,1,0,0,0,0,0]
+ds = p2.d
+cf = p2.cf
+
+costs2 = Vector{Vector{Float64}}()
+for i in 1:length(perms)
+    ics = cf .* ds[xs .+ 1] .+ perms[i] .* ts[xs .+ 1]
+    push!(costs2, ics)
+end
+
+c_opt = sum(opt.cost)
+cost_diff = costs2 .- c_opt
+
+(minimum(cost_diff), mean(cost_diff), maximum(cost_diff))
+
+writedlm("./results/mean_ne.csv", cost_diff)
+
 sum(t.cost)
 
 opt = solve_travel(p)

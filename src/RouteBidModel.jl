@@ -62,6 +62,7 @@ export travel_times
 export calculate_nash
 export network_route_len
 export calculate_optimal_jump
+export calc_nash
 
 include("decls2.jl")
 include("osm_convert.jl")
