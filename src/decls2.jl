@@ -478,6 +478,12 @@ function solve_scenario(name::String, nw::Network, agents_num::Int, cot::Vector{
     return df
 end
 
+
 function solve_scenario(name::String, nw::Network, agents_num::Int, cot_dev_dph::Float64 = 3.0, cot_mean_dph::Float64 = 24.0, seed::Int = 0)
     return solve_scenario(name, nw, agents_num, max.((cot_mean_dph .+ randn(agents_num) .* cot_dev_dph), zeros(agents_num)) ./ 3600.0, seed)
+end
+
+function solve_scenario(name::String, nw::Network, agents_num::Int, a::Float64 = 0.0, b::Float64 = 24.0, c::Float64 = 48.0, seed::Int = 0)
+    t_dist = TriangularDist(a, c, b)
+    return solve_scenario(name, nw, agents_num, max.(rand(t_dist, agents_num), zeros(agents_num)) ./ 3600.0, seed)
 end
