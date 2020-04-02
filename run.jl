@@ -19,8 +19,8 @@ nw = create_network_from_file(path, file)
 set_spawn_dest!(nw, vcat(get_nodes_in_radius(nw, (nw.intersections[718].posX, nw.intersections[718].posY), 100.0),
                                 get_nodes_in_radius(nw, (nw.intersections[636].posX, nw.intersections[636].posY), 50.0),
                                 get_nodes_in_radius(nw, (nw.intersections[54].posX, nw.intersections[54].posY), 100.0)),
-                        vcat(get_nodes_in_radius(nw, (nw.intersections[958].posX, nw.intersections[958].posY), 100.0),
-                                get_nodes_in_radius(nw, (nw.intersections[601].posX, nw.intersections[601].posY), 70.0),
+                        vcat(get_nodes_in_radius(nw, (nw.intersections[958].posX, nw.intersections[958].posY), 200.0),
+                                get_nodes_in_radius(nw, (nw.intersections[601].posX, nw.intersections[601].posY), 140.0),
                                 get_nodes_in_radius(nw, (nw.intersections[663].posX, nw.intersections[663].posY), 50.0)))
 
 s1 = solve_scenario("scenario1", nw, 1000, 3.0, 24.0, 9623423)

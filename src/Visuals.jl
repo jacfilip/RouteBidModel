@@ -125,7 +125,7 @@ function plot_agents(s::Simulation, title::String; agentIds=1:min(1000,s.network
                 LL,
                 popup=info,
                 tooltip=info,
-                weight=round(Int,log(7*colix))+1,
+                weight=round(Int,log(21*colix))+1,
                 color="#$(hex(cols[colix]))"
             ).add_to(m)
     end
