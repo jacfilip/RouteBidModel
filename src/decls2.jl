@@ -1,35 +1,35 @@
 
 @with_kw mutable struct ModelParams
-    CoF =  0.15e-3; #$/m
-    initialAgents=1000
-    maxAgents=1000
-    timeMax=Inf
-    maxIter=10
+    CoF::Float64 =  0.15e-3; #$/m
+    initialAgents::Int=1000
+    maxAgents::Int=1000
+    timeMax::Float64=Inf
+    maxIter::Int=10
 
-    unused_lanes = [
+    unused_lanes::Vector{Vector{Int}} = [
         [1214, 532], #east bridge lane
         [1044, 1045], #east bridge lane
         [635, 747]   #west bridge lane
     ]
-    nodes_to_remove = [e[1] for e in unused_lanes]
+    nodes_to_remove::Vector{Int} = [e[1] for e in unused_lanes]
 
-    east_bridge_lane = [445, 446] #OK
-    west_bridge_lane = [965, 112] #OK
-    bridgenodes = [east_bridge_lane[1], west_bridge_lane[1]]
-    bridge_capacity = [Int(initialAgents*3/4), Int(initialAgents*3/4)]
+    east_bridge_lane::Vector{Int} = [445, 446] #OK
+    west_bridge_lane::Vector{Int} = [965, 112] #OK
+    bridgenodes::Vector{Int} = [east_bridge_lane[1], west_bridge_lane[1]]
+    bridge_capacity::Vector{Int} = [Int(initialAgents*3/4), Int(initialAgents*3/4)]
                         #east, west max number of vehicles
-    b_vmin = [1,1] ./ 3.6     #m/s
-    b_vmax = [100,100] ./ 3.6 #m/s
+    b_vmin::Vector{Float64} = [1,1] ./ 3.6     #m/s
+    b_vmax::Vector{Float64} = [100,100] ./ 3.6 #m/s
 end
 
 @with_kw mutable struct Road
     rlen::Float64 #m
-    agents=Set{Int}()
+    agents::Set{Int}=Set{Int}()
     bNode::Int
     fNode::Int
     vMax::Float64 #m/s
     cap::Int
-    ttime=rlen/vMax #s
+    ttime::Float64=rlen/vMax #s
 end
 
 @with_kw mutable struct Intersection
@@ -37,12 +37,12 @@ end
     osmNodeID::Int
     posX::Float64
     posY::Float64
-    inRoads= Vector{Road}();
-    outRoads= Vector{Road}();
-    spawnPoint=false
-    destPoint=false
-    lat=0.0
-    lon=0.0
+    inRoads::Vector{Road}= Vector{Road}();
+    outRoads::Vector{Road}= Vector{Road}();
+    spawnPoint::Bool=false
+    destPoint::Bool=false
+    lat::Float64=0.0
+    lon::Float64=0.0
 end
 
 
@@ -50,30 +50,30 @@ end
     id::Int
     startNode::Intersection
     destNode::Intersection
-    routes=[Vector{Int}() for i in 1:2]
-    travelledRoute=rand(1:2)
-    timeEstim=0.0
-    deployTime=0.0
+    routes::Vector{Vector{Int}}=[Vector{Int}() for i in 1:2]
+    travelledRoute::Int=rand(1:2)
+    timeEstim::Float64=0.0
+    deployTime::Float64=0.0
     arrivalTime::Union{Nothing,Float64}=nothing
-    valueOfTime=maximum([24.52 / 60.0 / 60.0 + randn() * 3.0 / 60.0 / 60.0, 0.0])
-    routesCost=[0.0, 0.0]
-    routesDist=[0.0, 0.0]
-    routesTime=[0.0, 0.0]
+    valueOfTime::Float64=maximum([24.52 / 60.0 / 60.0 + randn() * 3.0 / 60.0 / 60.0, 0.0])
+    routesCost::Vector{Float64}=[0.0, 0.0]
+    routesDist::Vector{Float64}=[0.0, 0.0]
+    routesTime::Vector{Float64}=[0.0, 0.0]
 
 end
 
 
 @with_kw mutable struct Network
-    roads=Vector{Road}()
-    intersections=Vector{Intersection}()
-    spawns=Vector{Int}()  #points where agents can spawn
-    dests=Vector{Int}() #points that can be targets for agents
-    numRoads = 0
-    agents=Dict{Int,Agent}()
+    roads::Vector{Road}=Vector{Road}()
+    intersections::Vector{Intersection}=Vector{Intersection}()
+    spawns::Vector{Int}=Vector{Int}()  #points where agents can spawn
+    dests::Vector{Int}=Vector{Int}() #points that can be targets for agents
+    numRoads::Int = 0
+    agents::Dict{Int,Agent}=Dict{Int,Agent}()
     graph::SimpleWeightedDiGraph
     mapData::MapData
-    agentCntr=0  #number of current agents
-    agentIDmax=0 #maximum ID of agents on map
+    agentCntr::Int=0  #number of current agents
+    agentIDmax::Int=0 #maximum ID of agents on map
 end
 
 
@@ -84,13 +84,13 @@ end
 
 
 @with_kw mutable struct Simulation
-    p = ModelParams()
+    p::ModelParams = ModelParams()
     network::Network
-    timeStep=1.0
-    timeElapsed=0.0
-    iter = 0  #step t
+    timeStep::Float64=1.0
+    timeElapsed::Float64=0.0
+    iter::Int = 0  #step t
 
-    agentsFinished=Vector{Agent}()
+    agentsFinished::Vector{Agent}=Vector{Agent}()
 end
 
 function init_network!(n::Network, coords::Vector{Tuple{Float64,Float64,Float64}})
@@ -479,9 +479,9 @@ function solve_scenario(name::String, nw::Network, agents_num::Int, cot::Vector{
 end
 
 
-function solve_scenario(name::String, nw::Network, agents_num::Int, cot_dev_dph::Float64 = 3.0, cot_mean_dph::Float64 = 24.0, seed::Int = 0)
-    return solve_scenario(name, nw, agents_num, max.((cot_mean_dph .+ randn(agents_num) .* cot_dev_dph), zeros(agents_num)) ./ 3600.0, seed)
-end
+#function solve_scenario(name::String, nw::Network, agents_num::Int, cot_dev_dph::Float64 = 3.0, cot_mean_dph::Float64 = 24.0, seed::Int = 0)
+#    return solve_scenario(name, nw, agents_num, max.((cot_mean_dph .+ randn(agents_num) .* cot_dev_dph), zeros(agents_num)) ./ 3600.0, seed)
+#end
 
 function solve_scenario(name::String, nw::Network, agents_num::Int, a::Float64 = 0.0, b::Float64 = 24.0, c::Float64 = 48.0, seed::Int = 0)
     t_dist = TriangularDist(a, c, b)

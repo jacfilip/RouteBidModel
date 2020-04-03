@@ -181,13 +181,13 @@ end
 The total cost of travel
 """
 @inline function cost(p::BidModelParams, x::Vector{Int}, ts::Vector{Float64}, bid_ct::AbstractVector{Float64}=p.ct)
-    println("cf: $(p.cf)")
-    println("p.d: $(p.d)")
-    println("x: $(x)")
-    println("ct: $(bid_ct.*3600)")
-    println("ts: $(ts)")
+    #println("cf: $(p.cf)")
+    #println("p.d: $(p.d)")
+    #println("x: $(x)")
+    #println("ct: $(bid_ct.*3600)")
+    #println("ts: $(ts)")
     c = p.cf .* p.d[x .+ 1] .+ bid_ct .* ts[x .+ 1]
-    println("cost: $(c)")
+    #println("cost: $(c)")
     c
 end
 
@@ -212,7 +212,7 @@ function solve_nash_time(p::BidModelParams)::NashEq
     n0 = best_ns[1]
     n1 = best_ns[2]
     # we replace actual travel times and travel distances  with the weighted
-    # avarages assuming that the agen  ends up within a given location
+    # averages assuming that the agen  ends up within a given location
     # by random - and hence this are the expected values
     ttime = best_ts'*[n0,n1]/(n0+n1)
     tdist = p.d'*[n0,n1]/(n0+n1)

@@ -14,13 +14,6 @@ Random.seed!(0);
 N_MAX = 8
 p = BidModelParams(N_MAX=N_MAX,N=[20,10],ct=[1.0, 60.0, 80.0, 3.0, 100.0, 150.0, 5.0, 200.0] ./ 3600 )
 
-#symulation of bidding behavior
-p2 = BidModelParams(N_MAX=200, N=[150,100], ct=rand(TriangularDist(0.0, 66.3, 5.7), 200))
-bid, log = play_nash(p2, p2.ct, 600)
-
-CSV.write(raw".\results\bids.csv", log)
-
-#end of simulation of bidding behavior
 ne = solve_nash(p)
 
 ne = solve_nash_time(p)
