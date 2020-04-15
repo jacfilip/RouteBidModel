@@ -16,7 +16,7 @@ p = BidModelParams(N_MAX=N_MAX,N=[20,10],ct=[1.0, 60.0, 80.0, 3.0, 100.0, 150.0,
 
 ne = solve_nash(p)
 
-ne = solve_nash_time(p)
+ne = NashEq(p)
 
 e_cost = sum(cost(p, ne))
 

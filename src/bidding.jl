@@ -6,17 +6,17 @@ Represents parameters for a two-road transportation system
 
 
 @with_kw struct BidModelParams
-    N_MAX = 8   #number of agents
-    ct =  vcat(
+    N_MAX::Int = 8   #number of agents
+    ct::Vector{Float64} =  vcat(
        [10 + (rand() - 0.5) * 10 for i in 1:3],
        [10 + (rand() - 0.5) * 10 for i in 4:N_MAX]) ./ 3600 #cost of time $/s
     #real cost of time USDs/s for each agent
-    cf = 2.1 / 1000 # cost of fuel USD/m
-    d = [1000.0, 1000.0]  #road length m
-    N = [14, 7]        #road max capacity
-    v_min  = [1 /3.6, 1 / 3.6]  #minimal velocity m/s
-    v_max = [50 / 3.6, 50 / 3.6] #maximal velocity m/s
-    r_len = zeros(Float64, (N_MAX,2))
+    cf::Float64 = 2.1 / 1000 # cost of fuel USD/m
+    d::NTuple{2,Float64} = (1000.0, 1000.0)  #road length m
+    N::NTuple{2,Int} = (14, 7)        #road max capacity
+    v_min::NTuple{2,Float64}  = (1 /3.6, 1 / 3.6)  #minimal velocity m/s
+    v_max::NTuple{2,Float64} = (50 / 3.6, 50 / 3.6) #maximal velocity m/s
+    r_len::Matrix{Float64} = zeros(Float64, (N_MAX,2))
 end
 
 function calculate_nash(s::Simulation)
@@ -61,7 +61,7 @@ function calculate_nash(s::Simulation)
         cost_agent[i] =  a.valueOfTime * time_agent[i] + s.p.CoF * a.routesDist[x[i] + 1]
     end
 
-    return TravelPattern(x, cost_agent, cost_agent, travel_counts..., time_agent, [], [])
+    return TravelPattern(x, cost_agent, cost_agent, travel_counts..., time_agent) #, [], []
 end
 
 function calculate_optimal_jump(s::Simulation,
@@ -99,7 +99,7 @@ function calculate_optimal_jump(s::Simulation,
 
     #(bids, log) = play_nash(bid_params, bid_params.ct, 3)
 
-    TravelPattern([trunc(Int, round(value(x[i]))) for i in 1:N_MAX], cost, cost, Int(round(value(n0))), Int(round(value(n1))),time, [], [])
+    TravelPattern([trunc(Int, round(value(x[i]))) for i in 1:N_MAX], cost, cost, Int(round(value(n0))), Int(round(value(n1))),time) #, [], []
 end
 
 
@@ -124,12 +124,12 @@ Represents result of an optimization run on a set of model parameters
 @with_kw struct TravelPattern
     x::Vector{Int} #allocation for each traffic participant
     cost::Vector{Float64} # cost occured by each agent /with regards to bids/
-    cost_real = Float64[] #real cost occured by each agent
+    cost_real::Vector{Float64} = Float64[] #real cost occured by each agent
     n0::Int # number of agents taking the first road
     n1::Int # number of agents taking the second road
-    ts = Float64[] # travel times for both roads
-    bids = Float64[]
-    payments = Float64[]
+    ts::Vector{Float64} = Float64[] # travel times for both roads
+    #bids::Vector{Float64} = Float64[]
+    #payments::Vector{Float64} = Float64[]
 end
 
 """
@@ -144,6 +144,38 @@ travel time on both roads tends to have equal values
     tdist::Float64
 end
 
+
+"""
+    NashEq(p::BidModelParams)
+
+Finds a time-balanced layout for a two road system described by `p`
+"""
+function NashEq(p::BidModelParams)
+    @assert length(p.N) == 2
+    # assume all people travel the second road
+    local best_ts = [Inf, 0]
+    local best_ns
+
+    for i=(p.N_MAX-p.N[2]):p.N[1]
+        ns = [i, p.N_MAX-i]
+        ts = t_travel(p,ns)
+        if  abs(ts[2]-ts[1]) < abs(best_ts[1]-best_ts[2])
+            best_ns = ns
+            best_ts = ts
+        end
+    end
+    n0 = best_ns[1]
+    n1 = best_ns[2]
+    # we replace actual travel times and travel distances  with the weighted
+    # averages assuming that the agen  ends up within a given location
+    # by random - and hence this are the expected values
+    ttime = best_ts'*[n0,n1]/(n0+n1)
+    tdist = (p.d[1]*n0+p.d[2]*n1)/(n0+n1)
+    NashEq(n0=n0,n1=n1,ts=best_ts,ttime=ttime,tdist=tdist)
+end
+
+
+
 """
 Represent a payment plan along a travel plan
 Contains a `NashEq` for efficiency comaparison purposes
@@ -151,7 +183,7 @@ Contains a `NashEq` for efficiency comaparison purposes
 @with_kw struct PaymentPlan
     payments::Vector{Float64}
     travel_plan::TravelPattern
-    nasheq::NashEq
+    nasheq::Union{NashEq, Nothing}
 end
 
 """
@@ -191,34 +223,6 @@ The total cost of travel
     c
 end
 
-"""
-    solve_nash_time(p::BidModelParams)
-
-Finds a time-balanced layout for a two road system described by `p`
-"""
-function solve_nash_time(p::BidModelParams)::NashEq
-    @assert length(p.N) == 2
-    # assume all people travel the second road
-    local best_ts = [Inf, 0]
-    local best_ns
-    for i=(p.N_MAX-p.N[2]):p.N[1]
-        ns = [i, p.N_MAX-i]
-        ts = t_travel(p,ns)
-        if  abs(ts[2]-ts[1]) < abs(best_ts[1]-best_ts[2])
-            best_ns = ns
-            best_ts = ts
-        end
-    end
-    n0 = best_ns[1]
-    n1 = best_ns[2]
-    # we replace actual travel times and travel distances  with the weighted
-    # averages assuming that the agen  ends up within a given location
-    # by random - and hence this are the expected values
-    ttime = best_ts'*[n0,n1]/(n0+n1)
-    tdist = p.d'*[n0,n1]/(n0+n1)
-    NashEq(n0=n0,n1=n1,ts=best_ts,ttime=ttime,tdist=tdist)
-end
-
 function solve_nash(p::BidModelParams)::TravelPattern
     n1 = 0
     n2 = 0
@@ -247,7 +251,7 @@ function solve_nash(p::BidModelParams)::TravelPattern
     #    t[i] = t_travel(p, [n1,n2])[x[i]+1]
     #end
     t = t_travel(p, [n1,n2])
-    return TravelPattern(x=x, cost=cost(p, x, t),cost_real=[],n0=n1,n1=n2,ts=t,bids=[],payments=[])
+    return TravelPattern(x=x, cost=cost(p, x, t),cost_real=[],n0=n1,n1=n2,ts=t) #,bids=[],payments=[]
 end
 
 #TODO: can be removed after calculations:
@@ -263,7 +267,7 @@ function calc_nash(p::BidModelParams)::TravelPattern
     #end
     t = t_travel(p, [n0,n1])
 
-    return TravelPattern(x=x, cost=cost(p, x, t, p.ct),cost_real=[],n0=n0,n1=n1,ts=t,bids=[],payments=[])
+    return TravelPattern(x=x, cost=cost(p, x, t, p.ct),cost_real=[],n0=n0,n1=n1,ts=t) # ,bids=[],payments=[]
 end
 """
     solve_travel_jump(p::BidModelParams, bid_ct=p.ct)::TravelPattern
@@ -272,9 +276,9 @@ Finds the optimal travel layout for a given set of parameters and bids.
 This function should be used for testing purposes only, use `solve_travel`
 instead.
 """
-function solve_travel_jump(p::BidModelParams, bid_ct=p.ct)::TravelPattern
+function solve_travel_jump(p::BidModelParams, bid_ct=p.ct;print_level=0)::TravelPattern
   params = Dict{Symbol,Any}()
-  params[:nl_solver] = with_optimizer(Ipopt.Optimizer, print_level=0)
+  params[:nl_solver] = with_optimizer(Ipopt.Optimizer, print_level=print_level)
   params[:log_levels] = Symbol[]
   m = Model(with_optimizer(Juniper.Optimizer, params));
   @variable(m, x[1:p.N_MAX], Bin)
@@ -297,7 +301,7 @@ end
     solve_travel(p::BidModelParams, bid_ct=p.ct)::TravelPattern
 
 Finds the optimal travel layout for a given set of parameters and bids.
-Should return identical results to `solve_travel` and is 250x faster.
+Should return identical results to `solve_travel_jump` and is 250x faster.
 """
 function solve_travel(p::BidModelParams, bid_ct=p.ct; debugdf::Union{DataFrame,Nothing}=nothing)::TravelPattern
     @assert length(p.N) == 2
@@ -306,7 +310,8 @@ function solve_travel(p::BidModelParams, bid_ct=p.ct; debugdf::Union{DataFrame,N
     local best_ts::Vector{Float64}
     best_cost = Inf
     # sorted indices of bids
-    bid_ct_ixs = sortperm(bid_ct, rev=true)
+    Δ = p.ct./1000 # this ensures that sorting order matches first bid order
+    bid_ct_ixs = sortperm(bid_ct+Δ, rev=true)
     #this is used to reverse mapping to sorted values
     rev_bid_ct_ixs = last.(sort!(bid_ct_ixs .=> 1:length(bid_ct_ixs)))
     for i in 1:p.N_MAX
@@ -358,14 +363,16 @@ end
 
 
 
+
+
+
 """
     solve_optimal_payment(p::BidModelParams, bid_ct::Vector{Float64}=p.ct)
 
 Allocates a set of payments for a given set of bids.
 """
-function solve_optimal_payment(p::BidModelParams, bid_ct::Vector{Float64}=p.ct)::PaymentPlan
+function solve_optimal_payment(p::BidModelParams, bid_ct::Vector{Float64}=p.ct; nasheq = NashEq(p))::PaymentPlan
     travp = solve_travel(p, bid_ct)
-    nasheq = solve_nash_time(p)
     Δc =   cost(p,nasheq, bid_ct) .- travp.cost
     #display(DataFrame(Δc=Δc))
     extra_money = sum(Δc)
@@ -377,12 +384,17 @@ function solve_optimal_payment(p::BidModelParams, bid_ct::Vector{Float64}=p.ct):
     n_get =  sum(Δc .< 0)
     pays = deepcopy(Δc)
     #let's distribute  Δ among the poor
-    redistribute_c = extra_money/n_get
-    for i in 1:length(pays)
-        if Δc[i] < 0
-            pays[i] -= redistribute_c
-        end
-    end
+    #redistribute_c = extra_money/n_get
+    #for i in 1:length(pays)
+    #    if Δc[i] < 0
+    #        pays[i] -= redistribute_c
+    #    end
+    #end
+
+    #let's distribute  Δ among the ALL
+
+    pays .-= (extra_money/p.N_MAX)
+
     #@assert abs(sum(pays)) <= 100*eps(mean(p.ct)*10)
     return PaymentPlan(payments=pays, travel_plan=travp, nasheq=nasheq )
 end
@@ -409,23 +421,39 @@ function solve_optimal_payment(ne_costs::Vector{Float64}, opt_costs::Vector{Floa
     return pays
 end
 
+function solve_middle_payment(p::BidModelParams, bid_ct::Vector{Float64}=p.ct; nasheq = NashEq(p))::PaymentPlan
+    travp = solve_travel(p, bid_ct)
+    r_fast, r_slow = travp.ts[1] < travp.ts[2] ? (1,2) : (2,1)
+    Δt = travp.ts[r_slow] - travp.ts[r_fast]
+    price_slow = maximum(bid_ct[travp.x .== r_slow-1])
+    price_fast = minimum(bid_ct[travp.x .== r_fast-1])
+    price = (price_slow+price_fast)/2
+    pays = (travp.x .== r_slow-1)*(-1)*sum(travp.x .== r_fast-1)/(travp.n0+travp.n1)*price/Δt .+
+          (travp.x .== r_fast-1)*sum(travp.x .== r_slow-1)/(travp.n0+travp.n1)*price/Δt
+    @assert abs(sum(pays)) < 0.01
+    return PaymentPlan(payments=pays, travel_plan=travp, nasheq=nasheq )
+end
+
+
 """
 Revaluates bid for a single user who has a certain information about offers
 placed by other market participants.
 Returns:
 NamedTuple{(:bid, :real_cost, :payment),Tuple{Float64,Float64,PaymentPlan}}
 """
-function optimizebid(p::BidModelParams, a::Int, bid_ct::AbstractVector{Float64}=p.ct)
-    Δ = (1+rand())/100000 #this ensures that bids are unique across users
-    vals = Vector{Float64}(undef, length(bid_ct)+1)
+function optimizebid(p::BidModelParams, a::Int, bid_ct::AbstractVector{Float64}=p.ct; nasheq=NashEq(p))
+    #Δ = (1+rand())/100000 #this ensures that bids are unique across users
+    vals = Vector{Float64}(undef, length(bid_ct)+3)
     for i in 1:length(bid_ct)
         if i == a
             vals[i] = bid_ct[i]
         else
-            vals[i] = bid_ct[i]+Δ
+            vals[i] = bid_ct[i] #+Δ
         end
     end
-    vals[length(bid_ct)+1] = minimum(bid_ct)-Δ
+    vals[length(bid_ct)+1] = minimum(bid_ct)-0.01 #-Δ
+    vals[length(bid_ct)+2] = p.ct[a]
+    vals[length(bid_ct)+3] = (maximum(bid_ct)+p.ct[a])/2
     mybid_ct = deepcopy(bid_ct)
     best_cost = Inf
     local best_s1
@@ -433,7 +461,7 @@ function optimizebid(p::BidModelParams, a::Int, bid_ct::AbstractVector{Float64}=
     for bid_val in vals
         mybid_ct[a] = bid_val
         #println("bid_val ",bid_val)
-        s1 = solve_optimal_payment(p, mybid_ct)
+        s1 = solve_optimal_payment(p, mybid_ct;nasheq=nasheq)
         roadix = s1.travel_plan.x[a]+1
         #myreal_ne_cost = p.cf * s1.nasheq.tdist + p.ct[a] * s1.nasheq.ttime
         my_real_cost = p.cf * p.r_len[a, roadix] + p.ct[a] * s1.travel_plan.ts[roadix] + s1.payments[a]
@@ -448,23 +476,78 @@ function optimizebid(p::BidModelParams, a::Int, bid_ct::AbstractVector{Float64}=
 end
 
 
+function optimizebid_middle(p::BidModelParams, a::Int, bid_ct::AbstractVector{Float64}=p.ct; nasheq=NashEq(p))
+    #Δ = (1+rand())/1000 #this ensures that bids are unique across users
+    vals =[bid_ct[a], p.ct[a]]
+    for i in 1:length(bid_ct)
+        if i != a
+            push!(vals,bid_ct[i]) # + Δ
+        end
+    end
+    for r in [0.25,0.5,2,4,8,16,32,64]
+        push!(vals,bid_ct[a]*r)
+    end
+    mybid_ct = deepcopy(bid_ct)
+    best_cost = Inf
+    local best_s1
+    best_bid = 0.0
+    for bid_val in vals
+        mybid_ct[a] = bid_val
+        #println("bid_val ",bid_val)
+        s1 = solve_middle_payment(p, mybid_ct;nasheq=nasheq)
+        roadix = s1.travel_plan.x[a]+1
+        #myreal_ne_cost = p.cf * s1.nasheq.tdist + p.ct[a] * s1.nasheq.ttime
+        my_real_cost = p.cf * p.r_len[a, roadix] + p.ct[a] * s1.travel_plan.ts[roadix] + s1.payments[a]
+        if my_real_cost < best_cost
+            best_cost = my_real_cost
+            best_bid = mybid_ct[a]
+            best_s1=s1
+            #println(best_bid, " ",best_cost)
+        end
+    end
+    (bid=best_bid, real_cost=best_cost, payment=best_s1)
+end
+
+
+
 """
-    play_nash(p::BidModelParams, start_bid = p.ct; N_STEPS=100)
+    play_global_nash(p::BidModelParams, start_bid::Vector{Float64} = p.ct, N_STEPS::Int=200, optimizebidf::Function=optimizebid, nasheq=NashEq(p))
 
 Plays a Nash bidding game assuming that all bids are public.
 In each turn a single agent evaluates her bidding situation and chooses
 a bid that maximizes her profit.
 """
-function play_nash(p::BidModelParams, start_bid = p.ct, N_STEPS=200)
+function play_global_nash(p::BidModelParams, start_bid::Vector{Float64} = p.ct, N_STEPS::Int=200, optimizebidf::Function=optimizebid, nasheqlocal=NashEq(p))
     current_bid = deepcopy(start_bid)
-    log = DataFrame(i=Int[], a=Int[], bid = Float64[], pmnt = Float64[])
+    logagents = DataFrame(f=String[],i=Int[], a=Int[], bid = Float64[], pmnt = Float64[])
+    logsteps =  DataFrame(f=String[],i=Int[], n0=Int[], n1=Int[],
+                    cost_real_avg = Float64[],
+                    cost1=Float64[], cost2=Float64[],
+                    costneq1=Float64[], costneq2=Float64[],
+                    pmnt1 = Float64[], pmnt2 = Float64[],
+                    neq_t=Float64[], t_1=Float64[], t_2=Float64[] )
+    costneq = cost(p,nasheqlocal)
     for i in 1:N_STEPS
         a = ((i - 1) % (length(p.ct))) + 1 #rand(1:p.N_MAX)
-        res = optimizebid(p,a,current_bid)
+        res = optimizebidf(p,a,current_bid, nasheq=nasheqlocal)
+        tp = res.payment.travel_plan
         current_bid[a] = res.bid
+        pmnts=[Float64[],Float64[] ]
+        costs=[Float64[],Float64[] ]
+        costsneq=[Float64[],Float64[] ]
         for ia in 1:p.N_MAX
-            push!(log, [i, ia, current_bid[ia], res.payment.payments[ia]])
+            push!(logagents, [string(optimizebidf), i, ia,current_bid[ia],res.payment.payments[ia]])
+            push!(pmnts[tp.x[ia]+1], res.payment.payments[ia])
+            push!(costs[tp.x[ia]+1], tp.cost_real[ia])
+            push!(costsneq[tp.x[ia]+1], costneq[ia])
         end
+        push!(logsteps, [string(optimizebidf), i, tp.n0, tp.n1,
+              sum(tp.cost_real)/p.N_MAX,
+              mean(costs[1]),mean(costs[2]),
+              mean(costsneq[1]),mean(costsneq[2]),
+              mean(pmnts[1]),mean(pmnts[2]),
+              nasheqlocal.ttime, tp.ts[1], tp.ts[2]]
+              )
     end
-    (bid=current_bid, log=log)
+    (bid=current_bid, logagents=logagents, logsteps=logsteps)
 end

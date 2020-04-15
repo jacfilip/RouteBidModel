@@ -31,6 +31,7 @@ export Road
 export Intersection
 export ModelParams
 export SimpleWeightedDiGraph
+export NashEq
 export runsim!
 export set_spawn_dest!
 export spawn_agent_random!
@@ -45,24 +46,22 @@ export plot_all_paths
 export get_agent_by_id
 export spawn_num_agents!
 export getLL_of_route
-
-export solve_nash_time
 export solve_nash
 export solve_travel_jump
 export solve_travel
 export test_solve_travel
 export solve_optimal_payment
 export solve_scenario
-export optimize_bid
-export play_nash
+export optimizebid, optimizebid_middle
+export play_global_nash
 export cost
 export t_travel
 export BidModelParams
 export travel_times
-export calculate_nash
 export network_route_len
 export calculate_optimal_jump
 export calc_nash
+export solve_middle_payment
 
 include("decls2.jl")
 include("osm_convert.jl")
