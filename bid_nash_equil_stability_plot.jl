@@ -4,6 +4,7 @@ using Random
 using Distributions
 using CSV
 using Plots
+using LaTeXStrings
 pyplot()
 
 using Revise
@@ -48,37 +49,39 @@ CSV.write(raw".\results\log_agcalmseed0.csv", log_ag)
 
 
 
-function doplot(log_step::DataFrame, neq::NashEq)
+function doplot(log_step::DataFrame, neq::NashEq; kw...)
   log_step.costneq_pa = (log_step.costneq1.*log_step.n0.+log_step.costneq2.*log_step.n1)./(log_step.n0+log_step.n1)
   @assert minimum(log_step.costneq_pa) ≈ maximum(log_step.costneq_pa)
-  plot(1:nrow(log_step),log_step.cost_real_avg./log_step.costneq_pa, label="Total travel costs %",
+  plot(1:nrow(log_step),log_step.cost_real_avg./log_step.costneq_pa, label="Total costs: "*L"\sum C^*_k / \sum C^\dagger_k",
    linewidth=4,
+   size=(720,460),
    linecolor=:black,
    yformatter = yi -> "\$$(round(Int,100yi))\$ %",
    xlabel = "Simulation steps",
-   ylabel = "Value relative to Nash Equilibrium"
+   ylabel = "Value relative to Nash Equilibrium";
+   kw...
    )
-  plot!(1:nrow(log_step),(log_step.cost1.+log_step.pmnt1) ./log_step.costneq1, label=raw"% netto cost route $s_0$", linewidth=2,linecolor=:red)
-  plot!(1:nrow(log_step),(log_step.cost2.+log_step.pmnt2)./log_step.costneq2, label=raw"% netto cost route $s_1$", linewidth=2,linecolor=:green)
-  plot!(1:nrow(log_step),log_step.n0./neq.n0, label=raw"% of cars route $s_0$",linestyle=:dash,linecolor=:red)
-  plot!(1:nrow(log_step),log_step.n1./neq.n1, label=raw"% of cars route $s_1$",linestyle=:dash,linecolor=:green)
-  plot!(1:nrow(log_step),log_step.t_1./log_step.neq_t, label=raw"% travel time route $s_0$",linestyle=:dot,linecolor=:red)
-  plot!(1:nrow(log_step),log_step.t_2./log_step.neq_t, label=raw"% travel time route $s_1$",linestyle=:dot,linecolor=:green)
+  plot!(1:nrow(log_step),(log_step.cost1.+log_step.pmnt1) ./log_step.costneq1, label=raw"Costs route $s_0$: "*L"((C^*)^T(1-\mathbf{x})) /((C^\dagger)^T(1-\mathbf{x}))", linewidth=2,linecolor=:red)
+  plot!(1:nrow(log_step),(log_step.cost2.+log_step.pmnt2)./log_step.costneq2, label=raw"Costs route $s_1$: "*L"((C^*)^T\mathbf{x}) /((C^\dagger)^T\mathbf{x})", linewidth=2,linecolor=:green)
+  plot!(1:nrow(log_step),log_step.n0./neq.n0, label=raw"Cars on route $s_0$: "*L"n_0^*/n_0^\dagger",linestyle=:dash,linecolor=:red)
+  plot!(1:nrow(log_step),log_step.n1./neq.n1, label=raw"Cars on route $s_1$: "*L"n_0^*/n_0^\dagger",linestyle=:dash,linecolor=:green)
+  plot!(1:nrow(log_step),log_step.t_1./log_step.neq_t, label=raw"Travel time route $s_0$: "*L"t_0^*/t_0^\dagger",linestyle=:dot,linecolor=:red)
+  plot!(1:nrow(log_step),log_step.t_2./log_step.neq_t, label=raw"Travel time route $s_1$: "*L"t_1^*/t_1^\dagger",linestyle=:dot,linecolor=:green)
 
 end
 
 log_step = CSV.read(raw".\results\log_stepbifurcate.csv")
 doplot(log_step[1:210,:], neq)
-savefig("bifurcate.pdf")#seed=1
 savefig("bifurcate.png")
+savefig("bifurcate.pdf")#seed=1
 
 
 log_step_m = CSV.read(raw".\results\log_step_m.csv")
-doplot(log_step_m[1:47,:], neq)  # seed =1
+doplot(log_step_m[1:50,:], neq; ylim=(-1.1,8.1),yticks=-1:7)  # seed =1
 savefig("degenerate.pdf")
 savefig("degenerate.png")
 
 log_step_calm = CSV.read(raw".\results\log_stepcalmseed0.csv")
-doplot(log_step_calm[1:210,:],neq) #seed 0
+doplot(log_step_calm[1:210,:],neq;ylim=(0.6,1.6)) #seed 0
 savefig("calm_dyn.pdf")
 savefig("calm_dyn.png")

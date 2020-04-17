@@ -15,7 +15,6 @@ using Plots
 using SparseArrays
 using Serialization
 using PaddedViews
-using RecursiveArrayTools
 using Parameters
 using JuMP
 using LinearAlgebra
