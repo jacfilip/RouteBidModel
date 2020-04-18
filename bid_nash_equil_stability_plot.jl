@@ -3,8 +3,9 @@ using DataFrames
 using Random
 using Distributions
 using CSV
-using Plots
 using LaTeXStrings
+using Plots
+
 pyplot()
 
 using Revise
@@ -61,8 +62,8 @@ function doplot(log_step::DataFrame, neq::NashEq; kw...)
    ylabel = "Value relative to Nash Equilibrium";
    kw...
    )
-  plot!(1:nrow(log_step),(log_step.cost1.+log_step.pmnt1) ./log_step.costneq1, label=raw"Costs route $s_0$: "*L"((C^*)^T(1-\mathbf{x})) /((C^\dagger)^T(1-\mathbf{x}))", linewidth=2,linecolor=:red)
-  plot!(1:nrow(log_step),(log_step.cost2.+log_step.pmnt2)./log_step.costneq2, label=raw"Costs route $s_1$: "*L"((C^*)^T\mathbf{x}) /((C^\dagger)^T\mathbf{x})", linewidth=2,linecolor=:green)
+  plot!(1:nrow(log_step),(log_step.cost1.+log_step.pmnt1) ./log_step.costneq1, label=raw"Costs route $s_0$: "*L"((C^*)^T(1-\mathbf{x}^*)) /((C^\dagger)^T(1-\mathbf{x}^*))", linewidth=2,linecolor=:red)
+  plot!(1:nrow(log_step),(log_step.cost2.+log_step.pmnt2)./log_step.costneq2, label=raw"Costs route $s_1$: "*L"((C^*)^T\mathbf{x}^*) /((C^\dagger)^T\mathbf{x}^*)", linewidth=2,linecolor=:green)
   plot!(1:nrow(log_step),log_step.n0./neq.n0, label=raw"Cars on route $s_0$: "*L"n_0^*/n_0^\dagger",linestyle=:dash,linecolor=:red)
   plot!(1:nrow(log_step),log_step.n1./neq.n1, label=raw"Cars on route $s_1$: "*L"n_0^*/n_0^\dagger",linestyle=:dash,linecolor=:green)
   plot!(1:nrow(log_step),log_step.t_1./log_step.neq_t, label=raw"Travel time route $s_0$: "*L"t_0^*/t_0^\dagger",linestyle=:dot,linecolor=:red)
@@ -71,7 +72,7 @@ function doplot(log_step::DataFrame, neq::NashEq; kw...)
 end
 
 log_step = CSV.read(raw".\results\log_stepbifurcate.csv")
-doplot(log_step[1:210,:], neq)
+doplot(log_step[1:220,:], neq)
 savefig("bifurcate.png")
 savefig("bifurcate.pdf")#seed=1
 
