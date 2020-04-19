@@ -19,7 +19,9 @@ N_MAX=200
 p2 = BidModelParams(N_MAX=N_MAX, N=(150,100),
   ct=rand(LogNormal(3,1),N_MAX), # $/h
   d=(10.0, 10.0), # km
-  v_max=(60, 60) # km/h
+  v_max=(60, 60), # km/h
+  v_min=(5, 5), # km/h
+  cf=0
 )
 
 neq = NashEq(p2)
@@ -33,18 +35,23 @@ bid, log_ag, log_step = play_global_nash(p2, p2.ct, 300, optimizebid)
 CSV.write(raw".\results\log_stepbifurcate.csv", log_step) #seed = 1
 CSV.write(raw".\results\log_agbifurcate.csv", log_ag)
 
-bidm, log_ag_m,log_step_m = play_global_nash(p2, p2.ct, 60, optimizebid_middle)
-CSV.write(raw".\results\log_step_m.csv", log_step_m) #seed = 1
-CSV.write(raw".\results\log_ag_m.csv", log_ag_m)
 
 Random.seed!(0);
 p2 = BidModelParams(N_MAX=N_MAX, N=(150,100),
   ct=rand(LogNormal(3,1),N_MAX), # $/h
   d=(10.0, 10.0), # km
-  v_max=(60, 60) # km/h
+  v_max=(60, 60), # km/h
+  v_min=(5, 5), # km/h
+  cf=0
 )
+
+bidm, log_ag_m,log_step_m = play_global_nash(p2, p2.ct, 100, optimizebid_middle)
+CSV.write(raw".\results\log_step_m.csv", log_step_m) #seed = 0
+CSV.write(raw".\results\log_ag_m.csv", log_ag_m)
+
+
 neq = NashEq(p2)
-bid, log_ag, log_step = play_global_nash(p2, p2.ct, 500, optimizebid) #seed = 0
+bid, log_ag, log_step = play_global_nash(p2, p2.ct, 220, optimizebid) #seed = 0
 CSV.write(raw".\results\log_stepcalmseed0.csv", log_step)
 CSV.write(raw".\results\log_agcalmseed0.csv", log_ag)
 
@@ -78,7 +85,8 @@ savefig("bifurcate.pdf")#seed=1
 
 
 log_step_m = CSV.read(raw".\results\log_step_m.csv")
-doplot(log_step_m[1:50,:], neq; ylim=(-1.1,8.1),yticks=-1:7)  # seed =1
+doplot(log_step_m[1:100,:], neq; ylim=(-1.7,3.3))  # seed =0
+#ylim=(-1.1,8.1),yticks=-1:7
 savefig("degenerate.pdf")
 savefig("degenerate.png")
 
