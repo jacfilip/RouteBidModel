@@ -45,7 +45,9 @@ p2 = BidModelParams(N_MAX=N_MAX, N=(150,100),
   cf=0
 )
 
-bidm, log_ag_m,log_step_m = play_global_nash(p2, p2.ct, 100, optimizebid_middle)
+solve_middle_payment(p2)
+
+bidm, log_ag_m,log_step_m = play_global_nash(p2, p2.ct, 220, optimizebid_middle)
 CSV.write(raw".\results\log_step_m.csv", log_step_m) #seed = 0
 CSV.write(raw".\results\log_ag_m.csv", log_ag_m)
 
@@ -60,7 +62,7 @@ CSV.write(raw".\results\log_agcalmseed0.csv", log_ag)
 function doplot(log_step::DataFrame, neq::NashEq; kw...)
   log_step.costneq_pa = (log_step.costneq1.*log_step.n0.+log_step.costneq2.*log_step.n1)./(log_step.n0+log_step.n1)
   @assert minimum(log_step.costneq_pa) ≈ maximum(log_step.costneq_pa)
-  plot(1:nrow(log_step),log_step.cost_real_avg./log_step.costneq_pa, label="Total costs: "*L"\sum C^*_k / \sum C^\dagger_k",
+  plot(1:nrow(log_step),log_step.cost_real_avg./log_step.costneq_pa, label="Total costs: "*L"C^*_{TOT} / C^\dagger_{TOT}",
    linewidth=4,
    size=(720,460),
    linecolor=:black,
@@ -69,12 +71,12 @@ function doplot(log_step::DataFrame, neq::NashEq; kw...)
    ylabel = "Value relative to Nash Equilibrium";
    kw...
    )
-  plot!(1:nrow(log_step),(log_step.cost1.+log_step.pmnt1) ./log_step.costneq1, label=raw"Costs route $s_0$: "*L"((C^*)^T(1-\mathbf{x}^*)) /((C^\dagger)^T(1-\mathbf{x}^*))", linewidth=2,linecolor=:red)
-  plot!(1:nrow(log_step),(log_step.cost2.+log_step.pmnt2)./log_step.costneq2, label=raw"Costs route $s_1$: "*L"((C^*)^T\mathbf{x}^*) /((C^\dagger)^T\mathbf{x}^*)", linewidth=2,linecolor=:green)
+  plot!(1:nrow(log_step),(log_step.cost1.+log_step.pmnt1) ./log_step.costneq1, label=raw"Net costs route $s_0$: "*L"((\mathbf{C}^*-\mathbf{p})^T(\mathbf{1}-\mathbf{x}^*)) /((\mathbf{C}^\dagger)^T(\mathbf{1}-\mathbf{x}^*))", linewidth=2,linecolor=:red)
+  plot!(1:nrow(log_step),(log_step.cost2.+log_step.pmnt2)./log_step.costneq2, label=raw"Net costs route $s_1$: "*L"((\mathbf{C}^*-\mathbf{p})^T\mathbf{x}^*) /((\mathbf{C}^\dagger)^T\mathbf{x}^*)", linewidth=2,linecolor=:green)
   plot!(1:nrow(log_step),log_step.n0./neq.n0, label=raw"Cars on route $s_0$: "*L"n_0^*/n_0^\dagger",linestyle=:dash,linecolor=:red)
   plot!(1:nrow(log_step),log_step.n1./neq.n1, label=raw"Cars on route $s_1$: "*L"n_0^*/n_0^\dagger",linestyle=:dash,linecolor=:green)
-  plot!(1:nrow(log_step),log_step.t_1./log_step.neq_t, label=raw"Travel time route $s_0$: "*L"t_0^*/t_0^\dagger",linestyle=:dot,linecolor=:red)
-  plot!(1:nrow(log_step),log_step.t_2./log_step.neq_t, label=raw"Travel time route $s_1$: "*L"t_1^*/t_1^\dagger",linestyle=:dot,linecolor=:green)
+  plot!(1:nrow(log_step),log_step.t_1./log_step.neq_t, label=raw"Travel time route $s_0$: "*L"t_0^*/t^\dagger",linestyle=:dot,linecolor=:red)
+  plot!(1:nrow(log_step),log_step.t_2./log_step.neq_t, label=raw"Travel time route $s_1$: "*L"t_1^*/t^\dagger",linestyle=:dot,linecolor=:green)
 
 end
 
@@ -85,7 +87,7 @@ savefig("bifurcate.pdf")#seed=1
 
 
 log_step_m = CSV.read(raw".\results\log_step_m.csv")
-doplot(log_step_m[1:100,:], neq; ylim=(-1.7,3.3))  # seed =0
+doplot(log_step_m[1:220,:], neq; ) #ylim=(-1.7,3.3)  # seed =0
 #ylim=(-1.1,8.1),yticks=-1:7
 savefig("degenerate.pdf")
 savefig("degenerate.png")

@@ -421,15 +421,25 @@ function solve_optimal_payment(ne_costs::Vector{Float64}, opt_costs::Vector{Floa
     return pays
 end
 
-function solve_middle_payment(p::BidModelParams, bid_ct::Vector{Float64}=p.ct; nasheq = NashEq(p))::PaymentPlan
+function RouteBidModel.solve_middle_payment(p::BidModelParams, bid_ct::Vector{Float64}=p.ct; nasheq = NashEq(p))::PaymentPlan
     travp = solve_travel(p, bid_ct)
     r_fast, r_slow = travp.ts[1] < travp.ts[2] ? (1,2) : (2,1)
     Δt = travp.ts[r_slow] - travp.ts[r_fast]
     price_slow = maximum(bid_ct[travp.x .== r_slow-1])
     price_fast = minimum(bid_ct[travp.x .== r_fast-1])
     price = (price_slow+price_fast)/2
-    pays = (travp.x .== r_slow-1)*(-1)*sum(travp.x .== r_fast-1)/(travp.n0+travp.n1)*price/Δt .+
-          (travp.x .== r_fast-1)*sum(travp.x .== r_slow-1)/(travp.n0+travp.n1)*price/Δt
+    n_fast = sum(travp.x .== r_fast-1)
+    n_slow = sum(travp.x .== r_slow-1)
+    price_time = price*Δt
+    slow_pays = -n_fast/(travp.n0+travp.n1)*price_time
+    fast_pays = n_slow/(travp.n0+travp.n1)*price_time
+    #println("###")
+    #println( "Δt=$Δt, price_slow=$price_slow, price_fast=$price_fast, price=$price, n_fast=$n_fast, n_slow=$n_slow, ")
+    #println("price_time=$price_time")
+    #println( "slow_pays=$slow_pays, fast_pays=$fast_pays, n_slow*slow_pays=$(n_slow*slow_pays), n_fast*fast_pays=$(n_fast*fast_pays) ")
+    #flush(stdout)
+    pays = (travp.x .== r_slow-1)*slow_pays .+
+          (travp.x .== r_fast-1)*fast_pays
     @assert abs(sum(pays)) < 0.01
     return PaymentPlan(payments=pays, travel_plan=travp, nasheq=nasheq )
 end
