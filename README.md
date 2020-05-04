@@ -12,7 +12,7 @@ We verifed proposed auction design via an agent based simulation model represent
 
 | **Documentation** | **Build Status** |
 |---------------|--------------|
-|[![][docs-stable-img]][docs-stable-url] <br/> [![][docs-latest-img]][docs-dev-url] | [![Build Status][travis-img]][travis-url]  <br/> Linux and macOS |
+|[![][docs-stable-img]][docs-stable-url] <br/> [![][docs-latest-img]][docs-dev-url] |
 
 ## Documentation
 
