@@ -1,11 +1,12 @@
 # RouteBidModel.jl
 Repository accompanying the paper:
 
-*On urban traffic cost optimization optimization with an online mutual payments bidding platform for vehicle commuters*
+*Optimization of the cost of urban traffic through an online bidding platform for commuters*
 
 by Jacek Filipowski, Bogumił Kamiński, Atefeh Mashatan, Paweł Prałat, Przemysław Szufel.
 
-We consider the problem of increasing efficiency of a transportation system through optimizing the behavior of vehicle users. We assume that for commuters time in the traffic can be represented by monetary value and hence introduction of monetary compensations can lead to a more efficient organization of the transportation system. In our model heterogeneous travelers differently assess value of time spent in congestion, hence it is presumably viable to reduce traffic in the most congested streets by introducing a bidding mechanism that will allow the participants having a lower monetary value of time to receive a compensation financed by the group of commuters having a high value of time spend in congestion. 
+
+We consider the problem of increasing efficiency of a transportation system through optimizing the behaviour of commuters. The assumption is that the time spent in the traffic can be represented by a monetary value and hence introduction of monetary compensations can lead to a more efficient organization of the transportation system. In our model, heterogeneous travelers differently assess the value of their time spent in congestion, hence it is presumably viable to reduce traffic in the most congested streets by introducing a bidding mechanism that will allow the participants having a lower monetary value of time to receive a compensation financed by the group of commuters having a higher value of time spend in congestion. 
 
 We verifed proposed auction design via an agent based simulation model representing the Manhattan area of New York City. The results of our simulation confirm the theoretical findings that the introduction of the proposed auction mechanism in a real city settings leads to a more efficient allocation of routes chosen by agents.
 
