@@ -421,7 +421,7 @@ function solve_optimal_payment(ne_costs::Vector{Float64}, opt_costs::Vector{Floa
     return pays
 end
 
-function RouteBidModel.solve_middle_payment(p::BidModelParams, bid_ct::Vector{Float64}=p.ct; nasheq = NashEq(p))::PaymentPlan
+function solve_middle_payment(p::BidModelParams, bid_ct::Vector{Float64}=p.ct; nasheq = NashEq(p))::PaymentPlan
     travp = solve_travel(p, bid_ct)
     r_fast, r_slow = travp.ts[1] < travp.ts[2] ? (1,2) : (2,1)
     Δt = travp.ts[r_slow] - travp.ts[r_fast]
