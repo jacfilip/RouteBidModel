@@ -26,9 +26,6 @@ p2 = BidModelParams(N_MAX=N_MAX, N=(150,100),
 
 neq = NashEq(p2)
 
-
-
-
 costneq_pa=sum(cost(p2,neq))/p2.N_MAX
 bid, log_ag, log_step = play_global_nash(p2, p2.ct, 300, optimizebid)
 
@@ -96,3 +93,76 @@ log_step_calm = CSV.read(raw".\results\log_stepcalmseed0.csv")
 doplot(log_step_calm[1:210,:],neq;ylim=(0.6,1.6)) #seed 0
 savefig("calm_dyn.pdf")
 savefig("calm_dyn.png")
+
+#heterogenity sensitivity
+###################################
+#scenario 1 LN(3,2)
+Random.seed!(0);
+p2_1 = BidModelParams(N_MAX=N_MAX, N=(150,100),
+  ct=rand(LogNormal(3,2),N_MAX), # $/h
+  d=(10.0, 10.0), # km
+  v_max=(60, 60), # km/h
+  v_min=(5, 5), # km/h
+  cf=0
+)
+
+neq_1 = NashEq(p2_1)
+#solve_middle_payment(p2_1)
+
+bidm_1, log_ag_1,log_step_1 = play_global_nash(p2_1, p2_1.ct, 300, optimizebid)
+#CSV.write(raw".\results\log_step_1.csv", log_step_1) #seed = 0
+#CSV.write(raw".\results\log_ag_1.csv", log_ag_1)
+#log_step_1 = CSV.read(raw".\results\log_step_1.csv")
+doplot(log_step_1[1:220,:], neq_1)
+savefig("sensitivity_3_2.png")
+
+#######################################
+#scenario 2 LN(4,1)
+Random.seed!(0);
+p2_2 = BidModelParams(N_MAX=N_MAX, N=(150,100),
+  ct=rand(LogNormal(4,1),N_MAX), # $/h
+  d=(10.0, 10.0), # km
+  v_max=(60, 60), # km/h
+  v_min=(5, 5), # km/h
+  cf=0
+)
+
+neq_2 = NashEq(p2_2)
+
+bidm_2, log_ag_2,log_step_2 = play_global_nash(p2_2, p2_2.ct, 300, optimizebid)
+doplot(log_step_2[1:220,:], neq_2)
+savefig("sensitivity_4_1.png")
+
+#######################################
+#scenario 3 LN(3,0.5)
+Random.seed!(0);
+p2_3 = BidModelParams(N_MAX=N_MAX, N=(150,100),
+  ct=rand(LogNormal(3,0.5),N_MAX), # $/h
+  d=(10.0, 10.0), # km
+  v_max=(60, 60), # km/h
+  v_min=(5, 5), # km/h
+  cf=0
+)
+
+neq_3 = NashEq(p2_3)
+
+bidm_3, log_ag_3,log_step_3 = play_global_nash(p2_3, p2_3.ct, 300, optimizebid)
+doplot(log_step_3[1:220,:], neq_3)
+savefig("sensitivity_3_05.png")
+
+#######################################
+#scenario 4 LN(2,1)
+Random.seed!(0);
+p2_4 = BidModelParams(N_MAX=N_MAX, N=(150,100),
+  ct=rand(LogNormal(4,1),N_MAX), # $/h
+  d=(10.0, 10.0), # km
+  v_max=(60, 60), # km/h
+  v_min=(5, 5), # km/h
+  cf=0
+)
+
+neq_4 = NashEq(p2_4)
+
+bidm_4, log_ag_4,log_step_4 = play_global_nash(p2_4, p2_4.ct, 300, optimizebid)
+doplot(log_step_4[1:220,:], neq_4)
+savefig("sensitivity_LN_2_1.png")
