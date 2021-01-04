@@ -96,10 +96,10 @@ savefig("calm_dyn.png")
 
 #heterogenity sensitivity
 ###################################
-#scenario 1 LN(3,2)
+#scenario 1 LN(3,1.5)
 Random.seed!(0);
 p2_1 = BidModelParams(N_MAX=N_MAX, N=(150,100),
-  ct=rand(LogNormal(3,2),N_MAX), # $/h
+  ct=rand(LogNormal(3,1.5),N_MAX), # $/h
   d=(10.0, 10.0), # km
   v_max=(60, 60), # km/h
   v_min=(5, 5), # km/h
@@ -114,13 +114,13 @@ bidm_1, log_ag_1,log_step_1 = play_global_nash(p2_1, p2_1.ct, 300, optimizebid)
 #CSV.write(raw".\results\log_ag_1.csv", log_ag_1)
 #log_step_1 = CSV.read(raw".\results\log_step_1.csv")
 doplot(log_step_1[1:220,:], neq_1)
-savefig("sensitivity_3_2.png")
+savefig("sensitivity_3_15.png")
 
 #######################################
-#scenario 2 LN(4,1)
+#scenario 2 LN(3,2)
 Random.seed!(0);
 p2_2 = BidModelParams(N_MAX=N_MAX, N=(150,100),
-  ct=rand(LogNormal(4,1),N_MAX), # $/h
+  ct=rand(LogNormal(3,2),N_MAX), # $/h
   d=(10.0, 10.0), # km
   v_max=(60, 60), # km/h
   v_min=(5, 5), # km/h
@@ -131,13 +131,13 @@ neq_2 = NashEq(p2_2)
 
 bidm_2, log_ag_2,log_step_2 = play_global_nash(p2_2, p2_2.ct, 300, optimizebid)
 doplot(log_step_2[1:220,:], neq_2)
-savefig("sensitivity_4_1.png")
+savefig("sensitivity_3_2.png")
 
 #######################################
-#scenario 3 LN(3,0.5)
+#scenario 3 LN(3,0.75)
 Random.seed!(0);
 p2_3 = BidModelParams(N_MAX=N_MAX, N=(150,100),
-  ct=rand(LogNormal(3,0.5),N_MAX), # $/h
+  ct=rand(LogNormal(3,0.75),N_MAX), # $/h
   d=(10.0, 10.0), # km
   v_max=(60, 60), # km/h
   v_min=(5, 5), # km/h
@@ -148,13 +148,13 @@ neq_3 = NashEq(p2_3)
 
 bidm_3, log_ag_3,log_step_3 = play_global_nash(p2_3, p2_3.ct, 300, optimizebid)
 doplot(log_step_3[1:220,:], neq_3)
-savefig("sensitivity_3_05.png")
+savefig("sensitivity_3_075.png")
 
 #######################################
-#scenario 4 LN(2,1)
+#scenario 4 LN(3,0.5)
 Random.seed!(0);
 p2_4 = BidModelParams(N_MAX=N_MAX, N=(150,100),
-  ct=rand(LogNormal(4,1),N_MAX), # $/h
+  ct=rand(LogNormal(3,0.5),N_MAX), # $/h
   d=(10.0, 10.0), # km
   v_max=(60, 60), # km/h
   v_min=(5, 5), # km/h
@@ -165,4 +165,4 @@ neq_4 = NashEq(p2_4)
 
 bidm_4, log_ag_4,log_step_4 = play_global_nash(p2_4, p2_4.ct, 300, optimizebid)
 doplot(log_step_4[1:220,:], neq_4)
-savefig("sensitivity_LN_2_1.png")
+savefig("sensitivity_LN_3_05.png")
