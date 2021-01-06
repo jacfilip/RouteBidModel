@@ -95,74 +95,94 @@ savefig("calm_dyn.pdf")
 savefig("calm_dyn.png")
 
 #heterogenity sensitivity
-###################################
-#scenario 1 LN(3,1.5)
-Random.seed!(0);
-p2_1 = BidModelParams(N_MAX=N_MAX, N=(150,100),
-  ct=rand(LogNormal(3,1.5),N_MAX), # $/h
-  d=(10.0, 10.0), # km
-  v_max=(60, 60), # km/h
-  v_min=(5, 5), # km/h
-  cf=0
-)
 
-neq_1 = NashEq(p2_1)
-#solve_middle_payment(p2_1)
+function lognorm_params(m, std_dev)
+    v = std_dev^2
+    ϕ = sqrt(v + m^2);
+    μ  = log(m^2/ϕ)
+    σ = sqrt(log(ϕ^2/m^2))
+    (μ, σ)
+end
 
-bidm_1, log_ag_1,log_step_1 = play_global_nash(p2_1, p2_1.ct, 300, optimizebid)
-#CSV.write(raw".\results\log_step_1.csv", log_step_1) #seed = 0
-#CSV.write(raw".\results\log_ag_1.csv", log_ag_1)
-#log_step_1 = CSV.read(raw".\results\log_step_1.csv")
-doplot(log_step_1[1:220,:], neq_1)
-savefig("sensitivity_3_15.png")
+dist_ln = Distributions.LogNormal(3,1)
 
-#######################################
-#scenario 2 LN(3,2)
-Random.seed!(0);
-p2_2 = BidModelParams(N_MAX=N_MAX, N=(150,100),
-  ct=rand(LogNormal(3,2),N_MAX), # $/h
-  d=(10.0, 10.0), # km
-  v_max=(60, 60), # km/h
-  v_min=(5, 5), # km/h
-  cf=0
-)
+m=mean(dist_ln)
+std_dev=std(dist_ln)
 
-neq_2 = NashEq(p2_2)
+params = lognorm_params.(m, (0.4:0.05:1.6).*std_dev)
 
-bidm_2, log_ag_2,log_step_2 = play_global_nash(p2_2, p2_2.ct, 300, optimizebid)
-doplot(log_step_2[1:220,:], neq_2)
-savefig("sensitivity_3_2.png")
+function simulate_multiple_distributions(ln_params; N_MAX=200)
+  Random.seed!(0);
+  sensitivity = DataFrame(sigma = Float64[], init_tot_cost = Float64[], final_tot_cost = Float64[],
+    init_s0_cost = Float64[], final_s0_cost = Float64[],
+    init_s1_cost = Float64[], final_s1_cost = Float64[],
+    init_n0 = Float64[], final_n0 = Float64[],
+    init_n1 = Float64[], final_n1 = Float64[],
+    convergence_iters = Int64[], cost_swaps = Int64[])
 
-#######################################
-#scenario 3 LN(3,0.75)
-Random.seed!(0);
-p2_3 = BidModelParams(N_MAX=N_MAX, N=(150,100),
-  ct=rand(LogNormal(3,0.75),N_MAX), # $/h
-  d=(10.0, 10.0), # km
-  v_max=(60, 60), # km/h
-  v_min=(5, 5), # km/h
-  cf=0
-)
+  for p in ln_params
+    model_p = BidModelParams(N_MAX=N_MAX, N=(150,100),
+      ct=rand(LogNormal(p[1],p[2]),N_MAX), # $/h
+      d=(10.0, 10.0), # km
+      v_max=(60, 60), # km/h
+      v_min=(5, 5), # km/h
+      cf=0
+    )
 
-neq_3 = NashEq(p2_3)
+    neq = NashEq(model_p)
+    bidm, log_ag, log_step = play_global_nash(model_p, model_p.ct, 300, optimizebid)
+    log_step.costneq_pa = (log_step.costneq1.*log_step.n0.+log_step.costneq2.*log_step.n1)./(log_step.n0+log_step.n1)
+    tot_cost = log_step.cost_real_avg./log_step.costneq_pa
 
-bidm_3, log_ag_3,log_step_3 = play_global_nash(p2_3, p2_3.ct, 300, optimizebid)
-doplot(log_step_3[1:220,:], neq_3)
-savefig("sensitivity_3_075.png")
+    net_cost0 = (log_step.cost1.+log_step.pmnt1) ./log_step.costneq1
+    net_cost1 = (log_step.cost2.+log_step.pmnt2) ./log_step.costneq2
 
-#######################################
-#scenario 4 LN(3,0.5)
-Random.seed!(0);
-p2_4 = BidModelParams(N_MAX=N_MAX, N=(150,100),
-  ct=rand(LogNormal(3,0.5),N_MAX), # $/h
-  d=(10.0, 10.0), # km
-  v_max=(60, 60), # km/h
-  v_min=(5, 5), # km/h
-  cf=0
-)
+    cost = 0
+    cnt_conv = 0
+    cnt_swap = 0
+    last_sign = 0
+    cnt_sign = 0
+    for i in 1:length(tot_cost)
+      if cost != tot_cost[i] cnt_conv += 1 end
+      cost = tot_cost[i]
 
-neq_4 = NashEq(p2_4)
+      if sign(net_cost0[i] - net_cost1[i]) != last_sign cnt_sign += 1 end
+      last_sign = sign(net_cost0[i] - net_cost1[i])
+    end
 
-bidm_4, log_ag_4,log_step_4 = play_global_nash(p2_4, p2_4.ct, 300, optimizebid)
-doplot(log_step_4[1:220,:], neq_4)
-savefig("sensitivity_LN_3_05.png")
+    push!(sensitivity, Dict(:sigma => p[2], :init_tot_cost => tot_cost[1], :final_tot_cost => tot_cost[end],
+                          :init_s0_cost => net_cost0[1],  :final_s0_cost => net_cost0[end],
+                          :init_s1_cost => net_cost1[1],  :final_s1_cost => net_cost1[end],
+                          :init_n0 => (log_step.n0./neq.n0)[1], :final_n0 => (log_step.n0./neq.n0)[end],
+                          :init_n1 => (log_step.n1./neq.n1)[1], :final_n1 => (log_step.n1./neq.n1)[end],
+                          :convergence_iters => cnt_conv, :cost_swaps => cnt_sign)
+                          )
+
+  end
+  return  sensitivity
+end
+
+sensitivity = simulate_multiple_distributions(params)
+CSV.write(raw".\results\sensitivity.csv", sensitivity)
+
+function plot_sensitivity(data::DataFrame)
+  dev = std.(LogNormal.(3, data.sigma))
+
+  plot(dev, data.init_tot_cost, label="Total cost on first iteration",
+   linewidth=4,
+   size=(720,460),
+   linecolor=:black,
+   yformatter = yi -> "\$$(round(Int,100yi))\$ %",
+   xlabel = raw"Cost of time standard deviation, $/h",
+   ylabel = "Value relative to Nash Equilibrium"
+   )
+  plot!(dev, data.final_tot_cost, label=raw"Total cost after reaching equilibrium", linecolor=:black, linestyle=:dash,)
+  plot!(dev, data.init_s0_cost, label=raw"$s_0$ cost on first iteration", linewidth=2,linecolor=:green)
+  plot!(dev, data.init_s1_cost, label=raw"$s_1$ cost on first iteration", linewidth=2,linecolor=:red)
+  plot!(dev, data.final_s0_cost, label=raw"$s_0$ cost after reaching equilibrium",  linestyle=:dot,linecolor=:green)
+  plot!(dev, data.final_s1_cost, label=raw"$s_1$ cost after reaching equilibrium",  linestyle=:dot,linecolor=:red)
+  #plot!(data.sigma, data.convergence_iters, label=raw"Iterations to convergence", linestyle=:dot,linecolor=:blue, axis = :right)
+end
+
+plot_sensitivity(sensitivity)
+savefig("sensitivity.png")
