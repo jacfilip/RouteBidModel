@@ -10,6 +10,8 @@ We consider the problem of increasing efficiency of a transportation system thro
 
 We verifed proposed auction design via an agent based simulation model representing the Manhattan area of New York City. The results of our simulation confirm the theoretical findings that the introduction of the proposed auction mechanism in a real city settings leads to a more efficient allocation of routes chosen by agents.
 
+![Alt text](routebid-demo.png?raw=true "Demo")
+
 | **Documentation** | 
 |---------------|
 |[![][docs-stable-img]][docs-stable-url] <br/> [![][docs-latest-img]][docs-dev-url] |
